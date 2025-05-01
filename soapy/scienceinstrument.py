@@ -65,7 +65,7 @@ class PSFCamera(object):
         self.fov_rad = self.config.FOV * numpy.pi / (180. * 3600)
 
         self.setMask(mask)
-        self.pupil_mask = self.mask[self.sim_pad:-self.sim_pad,self.sim_pad:-self.sim_pad]
+        self.pupil_mask = numpy.asarray(self.mask[self.sim_pad:-self.sim_pad,self.sim_pad:-self.sim_pad],dtype=bool)
 
         self.los = lineofsight.LineOfSight(
                 self.config, self.soapy_config,
@@ -168,7 +168,7 @@ class PSFCamera(object):
         
         residual_field = numpy.copy(self.EField_fov)*self.pupil_mask
             
-        piston = numpy.nansum(residual_field)/self.pupil_mask
+        piston = numpy.nanmean(residual_field[self.pupil_mask])
         piston /= numpy.abs(piston)
         
         residual_field /= piston
@@ -278,6 +278,10 @@ class PSFCamera(object):
         # plt.colorbar()
         # plt.title('science detector, Strehl={:.2f}, Rytov={:.2f}'.format(self.instStrehl,rytov))
         # plt.show()
+        if self.soapy_config.wfss[0].plot == True:
+            plt.imshow(self.detector)
+            plt.title('science detector')
+            plt.show()
 
 
     def calc_wavefronterror(self):
@@ -296,16 +300,20 @@ class PSFCamera(object):
             # plt.colorbar()
             # plt.show()
             
-            piston = numpy.nansum(residual_field)/self.pupil_mask
+            piston = numpy.nanmean(residual_field[self.pupil_mask])
             piston /= numpy.abs(piston)
             
             residual_field /= piston
             residual_field *= self.pupil_mask
             
-            ms_wfe = numpy.nansum(numpy.square(numpy.angle(residual_field)/self.los.phs2Rad*self.pupil_mask)) / numpy.nansum(self.pupil_mask)
+            ms_wfe = numpy.nansum(numpy.square(my_unwrap(numpy.angle(
+                residual_field
+                ))/self.los.phs2Rad*self.pupil_mask)) / numpy.nansum(self.pupil_mask)
             rms_wfe = numpy.sqrt(ms_wfe)
+            # print('a')
             # print(rms_wfe)
-            
+            # print('b')
+
             if self.soapy_config.sim.saveRytov :
             
                 P = residual_field
@@ -378,6 +386,48 @@ class singleModeFibre(PSFCamera):
 
     def calcInstStrehl(self):
         self.instStrehl = numpy.abs(numpy.sum(self.fibre_efield * self.los.EField * self.normMask))**2
+
+def my_unwrap(wrapped_phase, period=2*numpy.pi):
+    
+    # numpy unwrap start unwrap at 0 coordinate
+    # but for circular aperture there is no corner!
+    # if we unwrap by each quardrant there will be a corner! noice.
+    # but we may have to stitch them back together nicely
+    # so things should be de-piston to the center
+    
+    center = wrapped_phase.shape[-1]//2
+    unwrapped_phase = numpy.zeros_like(wrapped_phase)
+    
+    # ++ quardrant
+    wrapped_quardrant = wrapped_phase[...,center:,center:]
+    unwrapped_quardrant = numpy.unwrap(numpy.unwrap(wrapped_quardrant,axis=0),axis=1)
+      
+    unwrapped_quardrant -= unwrapped_quardrant[0,0]
+    unwrapped_phase[...,center:,center:] = unwrapped_quardrant
+    
+    # +- quardrant
+    wrapped_quardrant = wrapped_phase[...,center:,:center][:,::-1]
+    unwrapped_quardrant = numpy.unwrap(numpy.unwrap(wrapped_quardrant,axis=0),axis=1)
+      
+    unwrapped_quardrant -= unwrapped_quardrant[0,0]
+    unwrapped_phase[...,center:,:center] = unwrapped_quardrant[:,::-1]
+    
+    # -+ quardrant
+    wrapped_quardrant = wrapped_phase[...,:center,center:][::-1,:]
+    unwrapped_quardrant = numpy.unwrap(numpy.unwrap(wrapped_quardrant,axis=0),axis=1)
+      
+    unwrapped_quardrant -= unwrapped_quardrant[0,0]
+    unwrapped_phase[...,:center,center:] = unwrapped_quardrant[::-1,:]
+      
+    # -- quardrant
+    wrapped_quardrant = wrapped_phase[...,:center,:center][::-1,::-1]
+    unwrapped_quardrant = numpy.unwrap(numpy.unwrap(wrapped_quardrant,axis=0),axis=1)
+      
+    unwrapped_quardrant -= unwrapped_quardrant[0,0]
+    unwrapped_phase[...,:center,:center] = unwrapped_quardrant[::-1,::-1]
+    
+    return unwrapped_phase
+
 
 
 # Compatability with older versions

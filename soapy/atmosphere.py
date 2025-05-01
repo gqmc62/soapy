@@ -119,7 +119,10 @@ class atmos(object):
 
         # Computes tau0, the AO time constant (Roddier 1981), at current wind speed
         vBar53 = (self.windSpeeds[:self.scrnNo]**(5./3.) * self.config.normScrnStrengths[:self.scrnNo]).sum() ** (3./5.)
-        tau0 = 0.314 * self.r0 / vBar53
+        if vBar53 != 0:
+            tau0 = 0.314 * self.r0 / vBar53
+        else:
+            tau0 = numpy.inf
 
         # If tau0 specified
         if self.config.tau0:
@@ -144,6 +147,19 @@ class atmos(object):
 
         self.scrns = numpy.zeros((self.scrnNo, self.scrn_size, self.scrn_size))
 
+        if (soapyConfig.wfss[0].propagationMode == 'Physical') or (soapyConfig.scis[0].propagationMode == 'Physical'):
+            self.PHYS = True
+            self.layer_scrn_sizes = numpy.ones((self.scrnNo),dtype=int) * int(self.simConfig.pupilSize)
+            self.layer_scrn_sizes += int(numpy.ceil(
+                2 * (soapyConfig.sim.max_diffraction_angle + soapyConfig.sim.max_sim_fov) * self.config.scrnHeights / self.pixel_scale))
+            self.pad = numpy.zeros((self.scrn_size),dtype=int)
+            for layer in range(self.scrnNo):
+                if self.layer_scrn_sizes[layer] % 2 != 0:
+                    self.layer_scrn_sizes[layer] += 1
+                self.pad[layer] = int((self.scrn_size - self.layer_scrn_sizes[layer])/2)
+        else:
+            self.PHYS = False
+            self.layer_scrn_sizes = None
 
         # The whole screens will be kept at this value, and then scaled to the
         # correct r0 before being sent to the simulation
@@ -155,13 +171,22 @@ class atmos(object):
             for layer in range(self.config.scrnNo):
 
                 logger.info("Initialise Infinite Phase Screen {}".format(layer+1))
-                phase_screen = InfinitePhaseScreen(
-                        self.scrn_size, self.pixel_scale, self.scrnStrengths[layer],
-                        self.L0s[layer], self.windSpeeds[layer], self.looptime,
-                        self.windDirs[layer], random_seed=None,
-                        RMTT=self.config.removedTipTiltPiston, n=self.simConfig.pupilSize)#self._R)
-                for row in range(self.scrn_size):
-                    phase_screen.add_row()
+
+                if self.PHYS:
+                    phase_screen = InfinitePhaseScreen(
+                            self.layer_scrn_sizes[layer], self.pixel_scale, self.scrnStrengths[layer],
+                            self.L0s[layer], self.windSpeeds[layer], self.looptime,
+                            self.windDirs[layer], random_seed=None,
+                            RMTT=self.config.removedTipTiltPiston, n=self.simConfig.pupilSize)
+                else:
+
+                    phase_screen = InfinitePhaseScreen(
+                            self.scrn_size, self.pixel_scale, self.scrnStrengths[layer],
+                            self.L0s[layer], self.windSpeeds[layer], self.looptime,
+                            self.windDirs[layer], random_seed=None,
+                            RMTT=self.config.removedTipTiltPiston, n=self.simConfig.pupilSize)#self._R)
+                    for row in range(self.scrn_size):
+                        phase_screen.add_row()
                 self.infinite_phase_screens.append(phase_screen)
 
         else:
@@ -308,7 +333,13 @@ class atmos(object):
 
         if self.config.infinite:
             for layer_n in range(self.scrnNo):
-                self.scrns[layer_n] = self.infinite_phase_screens[layer_n].move_screen()
+                if self.PHYS:
+                    # print(self.pad)
+                    self.scrns[layer_n] = numpy.pad(self.infinite_phase_screens[layer_n].move_screen(),
+                                                    ((self.pad[layer_n],self.pad[layer_n]),(self.pad[layer_n],self.pad[layer_n])),
+                                                    mode='symmetric')
+                else:
+                    self.scrns[layer_n] = self.infinite_phase_screens[layer_n].move_screen()
 
             # Convert to nm
             self.scrns *= (500/(2*numpy.pi))
@@ -452,7 +483,7 @@ class atmos(object):
         
         REMOVED = PHASE - TIP*self.TIP - TILT*self.TILT - PISTON*self.PISTON
         # removed = phase - tip*self.tip - tilt*self.tilt - piston*self.piston
-        print('yed')
+        
         return REMOVED
     
 

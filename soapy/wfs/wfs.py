@@ -503,6 +503,15 @@ class WFS(object):
                                 / numpy.abs(numpy.sum(Q*numpy.conjugate(Q))))
             rytov = numpy.var(numpy.log(numpy.abs(P[numpy.asarray(Q,dtype=bool)])))
             
+            nxsubap = self.soapy_config.wfss[0].nxSubaps
+            pxlsPerSubap = self.soapy_config.wfss[0].pxlsPerSubap
+            low_bound = nxsubap//2*pxlsPerSubap
+            up_bound = (nxsubap//2+1)*pxlsPerSubap
+            
+            plt.imshow(self.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
+            plt.title('sample wfs subap')
+            plt.show()
+            
             plt.imshow(self.wfsDetectorPlane/(self.wfsDetectorPlane.max()),vmin=0,vmax=1)
             plt.colorbar()
             plt.title('wfs detector plane, Strehl={:.2f}, Rytov={:.2f}'.format(strehl,rytov))

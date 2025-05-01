@@ -97,11 +97,7 @@ try:
 except NameError:
     xrange = range
 
-FULL_ACTS = numpy.array([21,22,23,
-                         29,30,31,32,33,
-                         38,39,40,41,42,
-                         47,48,49,50,51,
-                         57,58,59],dtype=int)
+
 
 def bin_this(A, w):
     # a = numpy.nanmean(A[:(A.shape[0]//w)*w,
@@ -437,14 +433,184 @@ class Reconstructor(object):
         
         if self.soapy_config.recon.analyseAberationCalib:
         
-            setattr(dm,'subapShift', numpy.zeros((dm.n_acts,len(self.wfss),2)))
-            dm.subapShift[:] = numpy.nan
-            # setattr(dm,'subapShiftv2', numpy.zeros((dm.n_acts,len(self.wfss),2)))
-            # dm.subapShiftv2[:] = numpy.nan
+            setattr(dm,'subapShift_influence', numpy.zeros((dm.n_acts,len(self.wfss),2)))
+            dm.subapShift_influence[:] = numpy.nan
+            setattr(dm,'subapShift_slope', numpy.zeros((dm.n_acts,len(self.wfss),2)))
+            dm.subapShift_slope[:] = numpy.nan
             setattr(dm,'rytov', numpy.zeros((dm.n_acts,len(self.wfss))))
             dm.rytov[:] = numpy.nan
         
+        # print(dm.n_acts)
+        if dm.n_acts == 81:
+            # FULL_ACTS = numpy.array([13,
+            #                          20,21,22,23,24,
+            #                          29,30,31,32,33,
+            #                          37,38,39,40,41,42,43,
+            #                          47,48,49,50,51,
+            #                          56,57,58,59,60,
+            #                          67],dtype=int)
+            FULL_ACTS = numpy.array([22,
+                                     30,31,32,
+                                     38,39,40,41,42,
+                                     48,49,50,
+                                     58],dtype=int)
+            
+            position = numpy.array([[0, 3],[0, 4],
+                                 [1, 1],[1, 2],[1, 3],[1, 4],[1, 5],[1, 6],
+                                 [2, 1],[2, 2],[2, 3],[2, 4],[2, 5],[2, 6],
+                                 [3, 0],[3, 1],[3, 2],[3, 3],[3, 4],[3, 5],[3, 6],[3, 7],
+                                 [4, 0],[4, 1],[4, 2],[4, 3],[4, 4],[4, 5],[4, 6],[4, 7],
+                                 [5, 1],[5, 2],[5, 3],[5, 4],[5, 5],[5, 6],
+                                 [6, 1],[6, 2],[6, 3],[6, 4],[6, 5],[6, 6],
+                                 [7, 3],[7, 4]], dtype=int) # wfs
+            
+            # ACT_LIST = numpy.array([24,
+            #                      32,33,34,
+            #                      40,41,42,43,44,
+            #                      50,51,52,
+            #                      60]) # dm act number
+            
+            ACT_LIST = numpy.array([13,
+                                 20,21,22,23,24,
+                                 29,30,31,32,33,
+                                 37,38,39,40,41,42,43,
+                                 47,48,49,50,51,
+                                 56,57,58,59,60,
+                                 67])
+            
+            DM_POS_TEMP = numpy.array([[0.5,3.5],
+                                    [1.5,1.5],[1.5,2.5],[1.5,3.5],[1.5,4.5],[1.5,5.5],
+                                    [2.5,1.5],[2.5,2.5],[2.5,3.5],[2.5,4.5],[2.5,5.5],
+                                    [3.5,0.5],[3.5,1.5],[3.5,2.5],[3.5,3.5],[3.5,4.5],[3.5,5.5],[3.5,6.5],
+                                    [4.5,1.5],[4.5,2.5],[4.5,3.5],[4.5,4.5],[4.5,5.5],
+                                    [5.5,1.5],[5.5,2.5],[5.5,3.5],[5.5,4.5],[5.5,5.5],
+                                    [6.5,3.5]])
+        elif dm.n_acts == 25:
+            # FULL_ACTS = numpy.array([7, 11,12,13, 17],dtype=int)
+            FULL_ACTS = numpy.array([12],dtype=int) # use only dm with 4 active subaps next to it and another 8 next to them
+            # xx
+            #xxxx
+            #xxxx
+            # xx
+            position = numpy.array([[0, 1],[0, 2],
+                                 [1, 0],[1, 1],[1, 2],[1, 3],
+                                 [2, 0],[2, 1],[2, 2],[2, 3],
+                                 [3, 1],[3, 2]], dtype=int) # from wfs based on detector_cent_coords
+            
+            ACT_LIST = numpy.array([7,
+                                 11,12,13,
+                                 17]) # dm act number # count from all dm acts # list only those between 4 wfs subap
+            
+            DM_POS_TEMP = numpy.array([[0.5,1.5],
+                                   [1.5,0.5],[1.5,1.5],[1.5,2.5],
+                                   [2.5,1.5]]) # similar to the above buth with the coordinate
+        elif dm.n_acts == 121:
+            FULL_ACTS = numpy.array([28,
+                                     37,38,39,40,41,
+                                     48,49,50,51,52,
+                                     58,59,60,61,62,63,64,
+                                     70,71,72,73,74,
+                                     81,82,83,84,85,
+                                     94],dtype=int) - 1
+            position = numpy.array([[0., 4.],[0., 5.],
+                                     [1., 2.],[1., 3.],[1., 4.],[1., 5.],[1., 6.],[1., 7.],
+                                     [2., 1.],[2., 2.],[2., 3.],[2., 4.],[2., 5.],[2., 6.],[2., 7.],[2., 8.],
+                                     [3., 1.],[3., 2.],[3., 3.],[3., 4.],[3., 5.],[3., 6.],[3., 7.],[3., 8.],
+                                     [4., 0.],[4., 1.],[4., 2.],[4., 3.],[4., 4.],[4., 5.],[4., 6.],[4., 7.],[4., 8.],[4., 9.],
+                                     [5., 0.],[5., 1.],[5., 2.],[5., 3.],[5., 4.],[5., 5.],[5., 6.],[5., 7.],[5., 8.],[5., 9.],
+                                     [6., 1.],[6., 2.],[6., 3.],[6., 4.],[6., 5.],[6., 6.],[6., 7.],[6., 8.],
+                                     [7., 1.],[7., 2.],[7., 3.],[7., 4.],[7., 5.],[7., 6.],[7., 7.],[7., 8.],
+                                     [8., 2.],[8., 3.],[8., 4.],[8., 5.],[8., 6.],[8., 7.],
+                                     [9., 4.],[9., 5.]],dtype=int)
+            ACT_LIST = numpy.array([17,
+                                    26,27,28,29,30,
+                                    36,37,38,39,40,41,42,
+                                    47,48,49,50,51,52,53,
+                                    57,58,59,60,61,62,63,64,65,
+                                    69,70,71,72,73,74,75,
+                                    80,81,82,83,84,85,86,
+                                    92,93,94,95,96,
+                                    116]) - 1
+            DM_POS_TEMP = numpy.array([[0.5,4.5],
+                                       [1.5,2.5],[1.5,3.5],[1.5,4.5],[1.5,5.5],[1.5,6.5],
+                                       [2.5,1.5],[2.5,2.5],[2.5,3.5],[2.5,4.5],[2.5,5.5],[2.5,6.5],[2.5,7.5],
+                                       [3.5,1.5],[3.5,2.5],[3.5,3.5],[3.5,4.5],[3.5,5.5],[3.5,6.5],[3.5,7.5],
+                                       [4.5,0.5],[4.5,1.5],[4.5,2.5],[4.5,3.5],[4.5,4.5],[4.5,5.5],[4.5,6.5],[4.5,7.5],[4.5,8.5],
+                                       [5.5,1.5],[5.5,2.5],[5.5,3.5],[5.5,4.5],[5.5,5.5],[5.5,6.5],[5.5,7.5],
+                                       [6.5,1.5],[6.5,2.5],[6.5,3.5],[6.5,4.5],[6.5,5.5],[6.5,6.5],[6.5,7.5],
+                                       [7.5,2.5],[7.5,3.5],[7.5,4.5],[7.5,5.5],[7.5,6.5],
+                                       [8.5,4.5]])
+            
+        elif dm.n_acts == 49:
+            FULL_ACTS = numpy.array([17,
+                                     23,24,25,
+                                     31],dtype=int)
+            ACT_LIST = numpy.array([10,
+                                     16,17,18,
+                                     22,23,24,25,26,
+                                     30,31,32,
+                                     38],dtype=int)
+            position = numpy.array([[0,2],[0,3],
+                                    [1,1],[1,2],[1,3],[1,4],
+                                    [2,0],[2,1],[2,2],[2,3],[2,4],[2,5],
+                                    [3,0],[3,1],[3,2],[3,3],[3,4],[3,5],
+                                    [4,1],[4,2],[4,3],[4,4],
+                                    [5,2],[5,3]],
+                                   dtype=int)
+            DM_POS_TEMP = numpy.array([[0.5,2.5],
+                                       [1.5,1.5],[1.5,2.5],[1.5,3.5],
+                                       [2.5,0.5],[2.5,1.5],[2.5,2.5],[2.5,3.5],[2.5,4.5],
+                                       [3.5,1.5],[3.5,2.5],[3.5,3.5],
+                                       [4.5,2.5]])
+            
+        elif dm.n_acts == 169:
+            # FULL_ACTS = numpy.array([10, 16,17,18, 22,23,24,25,26, 30,31,32, 38],dtype=int)
+            FULL_ACTS = numpy.array([ 32,
+                                      43, 44, 45, 46, 47,
+                                      55, 56, 57, 58, 59, 60, 61,
+                                      68, 69, 70, 71, 72, 73, 74,
+                                      80, 81, 82, 83, 84, 85, 86, 87, 88,
+                                      94, 95, 96, 97, 98, 99,100,
+                                     107,108,109,110,111,112,113,
+                                     121,122,123,124,125,
+                                     136],dtype=int)
+            position = numpy.array([[0,5],[0,6], # 12x12 subx
+                                 [1,3],[1,4],[1,5],[1,6],[1,7],[1,8],
+                                 [2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[2,9],
+                                 [3,1],[3,2],[3,3],[3,4],[3,5],[3,6],[3,7],[3,8],[3,9],[3,10],
+                                 [4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[4,9],[4,10],
+                                 [5,0],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6],[5,7],[5,8],[5,9],[5,10],[5,11],
+                                 [6,0],[6,1],[6,2],[6,3],[6,4],[6,5],[6,6],[6,7],[6,8],[6,9],[6,10],[6,11],
+                                 [7,1],[7,2],[7,3],[7,4],[7,5],[7,6],[7,7],[7,8],[7,9],[7,10],
+                                 [8,1],[8,2],[8,3],[8,4],[8,5],[8,6],[8,7],[8,8],[8,9],[4,10],
+                                 [9,2],[9,3],[9,4],[9,5],[9,6],[9,7],[9,8],[9,9],
+                                 [10,3],[10,4],[10,5],[10,6],[10,7],[10,8],
+                                 [11,5],[11,6]],dtype=int)
+            ACT_LIST = numpy.array([ 32,
+                                  43, 44, 45, 46, 47,
+                                  55, 56, 57, 58, 59, 60, 61,
+                                  68, 69, 70, 71, 72, 73, 74,
+                                  80, 81, 82, 83, 84, 85, 86, 87, 88,
+                                  94, 95, 96, 97, 98, 99,100,
+                                 107,108,109,110,111,112,113,
+                                 121,122,123,124,125,
+                                 136],dtype=int)
+            DM_POS_TEMP = numpy.array([[1.5,5.5],
+                                    [2.5,3.5],[2.5,4.5],[2.5,5.5],[2.5,6.5],[2.5,7.5],
+                                    [3.5,2.5],[3.5,3.5],[3.5,4.5],[3.5,5.5],[3.5,6.5],[3.5,7.5],[3.5,8.5],
+                                    [4.5,1.5],[4.5,2.5],[4.5,3.5],[4.5,4.5],[4.5,5.5],[4.5,6.5],[4.5,7.5],
+                                    [5.5,1.5],[5.5,2.5],[5.5,3.5],[5.5,4.5],[5.5,5.5],[5.5,6.5],[5.5,7.5],[5.5,8.5],[5.5,9.5],
+                                    [6.5,2.5],[6.5,3.5],[6.5,4.5],[6.5,5.5],[6.5,6.5],[6.5,7.5],[6.5,8.5],
+                                    [7.5,1.5],[7.5,2.5],[7.5,3.5],[7.5,4.5],[7.5,5.5],[7.5,6.5],[7.5,7.5],
+                                    [8.5,3.5],[8.5,4.5],[8.5,5.5],[8.5,6.5],[8.5,7.5],
+                                    [9.5,5.5]])
+        else:
+            FULL_ACTS = numpy.array([])
+        
+        first_plot = False
+        
         for i in range(dm.n_acts):
+            
             # Set vector of iMat commands and phase to 0
             actCommands[:] = 0
 
@@ -480,22 +646,52 @@ class Reconstructor(object):
                 iMat[i, n_wfs_measurments: n_wfs_measurments+wfs.n_measurements] = -1 * (
                     wfs.frame(scrns=None, phase_correction=phase, iMatFrame=True)
                     - zero_iMat[n_wfs_measurments: n_wfs_measurments+wfs.n_measurements])# / dm.dmConfig.iMatValue
-                
-                if self.soapy_config.recon.analyseAberationCalib and DM.config.calibrate == True:
+                # print(self.soapy_config.recon.analyseAberationCalib,plot,i,FULL_ACTS)
+                if self.soapy_config.recon.analyseAberationCalib:# and DM.config.calibrate == True:
                     
                     if (i == FULL_ACTS).any():
-                        
-                        if (plot == True) and (i == 40):
-                            actCommands = numpy.zeros((81),dtype=float)
-                            actCommands[20] = 1
-                            actCommands[22] = 1
-                            actCommands[24] = 1
-                            actCommands[38] = 1
-                            actCommands[40] = 1
-                            actCommands[42] = 1
-                            actCommands[56] = 1
-                            actCommands[58] = 1
-                            actCommands[60] = 1
+                        # print(first_plot)
+                        if (first_plot == True) and (plot == True) :
+                            first_plot = False
+                            # print(first_plot)
+                            if dm.n_acts == 81:
+                                actCommands = numpy.zeros((81),dtype=float)
+                                actCommands[20] = 1
+                                actCommands[22] = 1
+                                actCommands[24] = 1
+                                actCommands[38] = 1
+                                actCommands[40] = 1
+                                actCommands[42] = 1
+                                actCommands[56] = 1
+                                actCommands[58] = 1
+                                actCommands[60] = 1
+                            elif dm.n_acts == 25:
+                                actCommands = numpy.zeros((25),dtype=float)
+                                actCommands[11] = 1
+                                actCommands[13] = 1
+                            elif dm.n_acts == 49:
+                                actCommands = numpy.zeros((49),dtype=float)
+                                actCommands[10] = 1
+                                actCommands[22] = 1
+                                actCommands[24] = 1
+                                actCommands[26] = 1
+                                actCommands[38] = 1
+                            elif dm.n_acts == 169:
+                                actCommands = numpy.zeros((169),dtype=float)
+                                actCommands[32] = 1
+                                actCommands[56] = 1
+                                actCommands[58] = 1
+                                actCommands[60] = 1
+                                actCommands[80] = 1
+                                actCommands[82] = 1
+                                actCommands[84] = 1
+                                actCommands[86] = 1
+                                actCommands[88] = 1
+                                actCommands[108] = 1
+                                actCommands[110] = 1
+                                actCommands[112] = 1
+                                actCommands[136] = 1
+                            # print(dm.n_acts,actCommands.shape)
                             phase[dm.n_dm] = dm.dmFrame(actCommands)
                             for nPhase in range(phase.shape[0]):
                                 plt.imshow(phase[nPhase])
@@ -536,7 +732,7 @@ class Reconstructor(object):
                             
                             ax1.hlines((-4,-3,-2,-1,0,1,2,3,4),xmin=-4,xmax=4,color='w')
                             ax1.vlines((-4,-3,-2,-1,0,1,2,3,4),ymin=-4,ymax=4,color='w')
-                            ax1.plot([0,2,-2,0,0,-2,-2,2,2],[0,0,0,2,-2,-2,2,-2,2],color='k',marker='o',ls='')
+                            # ax1.plot([0,2,-2,0,0,-2,-2,2,2],[0,0,0,2,-2,-2,2,-2,2],color='k',marker='o',ls='')
                             fig.colorbar(c,ax=ax1)
                             ax1.axis('square')
                             
@@ -557,6 +753,7 @@ class Reconstructor(object):
                                         dpi=300,bbox_inches='tight',transparent=True)
                         
                             plt.show()
+                            plt.clf()
                             # reset things to where they were
                             actCommands[:] = 0
     
@@ -571,6 +768,9 @@ class Reconstructor(object):
                                         phase[DM_N] = DM.dmFrame('flat')
                                     else:
                                         phase[DM_N] = DM.dmFrame('shape')
+                                        
+                            wfs.frame(None, phase_correction=phase, iMatFrame=True,iMatFramePlot=True)
+                        
                         
                         xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
                         xx -= xx.max()/2.
@@ -606,114 +806,194 @@ class Reconstructor(object):
                             wfs.interp_efield[
                                 numpy.asarray(wfs.scaledMask,dtype=bool)])))
                         
-                        no_aberration_phase_max_x,no_aberration_phase_max_y = find_centre(no_aberration,wfs.nx_subap_interp)
-                        with_aberration_phase_max_x,with_aberration_phase_max_y = find_centre(-with_aberration,wfs.nx_subap_interp)
-                        # max_shift_x = with_aberration_phase_max_x - no_aberration_phase_max_x
-                        # max_shift_y = with_aberration_phase_max_y - no_aberration_phase_max_y
+                        # if plot == True:
                         
-                        # dm.subapShiftv2[i,wfs_n,0] = max_shift_x
-                        # dm.subapShiftv2[i,wfs_n,1] = max_shift_y
-                        
-                        # MAX = numpy.nanmax(-no_aberration)
-                        # MIN = numpy.nanmin(-no_aberration)
-                        # plt.pcolor(xx,xx,numpy.angle(with_aberration_efield.T))
-                        # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.axis('square')
-                        # plt.colorbar()
-                        # plt.title('with aberration efield')
-                        # plt.show()
-                        # plt.pcolor(xx,xx,with_aberration.T)
-                        # plt.plot(with_aberration_phase_max_x,with_aberration_phase_max_y,marker='o',color='r')
-                        # plt.plot(no_aberration_phase_max_x,no_aberration_phase_max_y,marker='^',color='k')
-                        # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.axis('square')
-                        # plt.title('with aberration')
-                        # plt.colorbar()
-                        # plt.show()
+                        #     no_aberration_phase_max_x,no_aberration_phase_max_y = find_centre(no_aberration,wfs.nx_subap_interp)
+                        #     with_aberration_phase_max_x,with_aberration_phase_max_y = find_centre(-with_aberration,wfs.nx_subap_interp)
+                        #     max_shift_x = with_aberration_phase_max_x - no_aberration_phase_max_x
+                        #     max_shift_y = with_aberration_phase_max_y - no_aberration_phase_max_y
+                            
+                        #     # dm.subapShiftv2[i,wfs_n,0] = max_shift_x
+                        #     # dm.subapShiftv2[i,wfs_n,1] = max_shift_y
+                            
+                        #     MAX = numpy.nanmax(-no_aberration)
+                        #     MIN = numpy.nanmin(-no_aberration)
+                        #     plt.pcolor(xx,xx,numpy.angle(with_aberration_efield.T))
+                        #     plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.axis('square')
+                        #     plt.colorbar()
+                        #     plt.title('with aberration efield')
+                        #     plt.show()
+                        #     plt.pcolor(xx,xx,with_aberration.T)
+                        #     plt.plot(with_aberration_phase_max_x,with_aberration_phase_max_y,marker='o',color='r')
+                        #     plt.plot(no_aberration_phase_max_x,no_aberration_phase_max_y,marker='^',color='k')
+                        #     plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.axis('square')
+                        #     plt.title('with aberration')
+                        #     plt.colorbar()
+                        #     plt.show()
                         
                         size_A = with_aberration.shape[0]
                         
                         with_aberration[wfs.scaledMask == 0] = numpy.nan
                         no_aberration[wfs.scaledMask == 0] = numpy.nan
                         
-                        corr = numpy.fft.fftshift(numpy.fft.ifft2(
+                        # schmidt 2010 pg 45
+                        
+                        temp_corr = numpy.fft.fftshift(numpy.fft.ifft2(
                             numpy.fft.fft2(numpy.pad(
                                 numpy.nan_to_num(with_aberration),
                                 ((size_A//2,size_A//2),(size_A//2,size_A//2)),mode='constant'))
                             * numpy.conjugate(numpy.fft.fft2(numpy.pad(
                                 numpy.nan_to_num(-no_aberration),
                                 ((size_A//2,size_A//2),(size_A//2,size_A//2)),mode='constant')))
-                            )).real[size_A//2:size_A*3//2,size_A//2:size_A*3//2]
-
+                            ))#.real[size_A//2:size_A*3//2,size_A//2:size_A*3//2]
                         
+                        corr = temp_corr.real[size_A//2:size_A*3//2,size_A//2:size_A*3//2]
+
+                        # mask = numpy.pad(numpy.ones((size_A,size_A),dtype=float),
+                        #                  ((size_A//2,size_A//2),(size_A//2,size_A//2)),
+                        #                  mode='constant')
+
+                        # mask_corr = numpy.fft.fftshift(numpy.fft.ifft2(numpy.abs(
+                        #     numpy.fft.fft2(mask))**2))#.real[size_A//2:size_A*3//2,size_A//2:size_A*3//2]
+                        
+                        # idx = (mask_corr != 0)
+                        # c = numpy.zeros_like(temp_corr)
+                        # c[idx] = temp_corr[idx] / mask_corr[idx] * mask[idx]
+                        # corr = c.real[size_A//2:size_A*3//2,size_A//2:size_A*3//2]
+
                         # MAX = numpy.nanmax(-no_aberration)
                         # MIN = numpy.nanmin(-no_aberration)
                         
-                        # plt.pcolor(xx,xx,-no_aberration.T,vmin=MIN,vmax=MAX)
-                        # plt.axis('square')
-                        # plt.title('original poke phase')
-                        # plt.colorbar()
-                        # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # # plt.savefig('poke{:d}.png'.format(i))
-                        # plt.show()
+                        # if plot == True:
                         
-                        # plt.pcolor(xx,xx,with_aberration.T,vmin=MIN,vmax=MAX)
-                        # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.title('real interaction')
-                        # plt.axis('square')
-                        # plt.colorbar()
-                        # # plt.savefig('im{:d}.png'.format(i))
-                        # plt.show()
+                        #     plt.pcolor(xx,xx,-no_aberration.T,vmin=MIN,vmax=MAX)
+                        #     plt.axis('square')
+                        #     plt.title('original poke phase')
+                        #     plt.colorbar()
+                        #     plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     # plt.savefig('poke{:d}.png'.format(i))
+                        #     plt.show()
+                            
+                        #     plt.pcolor(xx,xx,with_aberration.T,vmin=MIN,vmax=MAX)
+                        #     plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.title('real interaction')
+                        #     plt.axis('square')
+                        #     plt.colorbar()
+                        #     # plt.savefig('im{:d}.png'.format(i))
+                        #     plt.show()
                     
                         
                         
                         
                         true_locx, true_locy = find_centre(corr,wfs.nx_subap_interp)
                         
-                        # x = numpy.linspace(-4,4,num=corr.shape[0])
-                        # plt.pcolor(x,x,corr.T)#,vmin=0,vmax=1000)
-                        # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.plot(true_locx,true_locy,ls='',marker='o',color='k',label='true max')
-                        # plt.legend()
-                        # plt.colorbar()
-                        # plt.axis('square')
-                        # plt.title('true max at ({:.2f},{:.2f})'.format(true_locx,true_locy))
-                        # plt.show()
+                        # if plot == True:
                         
-                        if ((numpy.abs(true_locx) < wfs.nx_subaps//2)
-                            or (numpy.abs(true_locx) < wfs.nx_subaps//2)):
+                        #     x = numpy.linspace(-4,4,num=corr.shape[0])
+                        #     plt.pcolor(x,x,corr.T)#,vmin=0,vmax=1000)
+                        #     plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     plt.plot(true_locx,true_locy,ls='',marker='o',color='k',label='true max')
+                        #     plt.legend()
+                        #     plt.colorbar()
+                        #     plt.axis('square')
+                        #     plt.title('true max at ({:.2f},{:.2f})'.format(true_locx,true_locy))
+                        #     plt.show()
+                        
+                        # if ((numpy.abs(true_locx) < wfs.nx_subaps//2)
+                        #     or (numpy.abs(true_locy) < wfs.nx_subaps//2)):
                             
-                            dm.subapShift[i,wfs_n,0] = true_locx
-                            dm.subapShift[i,wfs_n,1] = true_locy
-                        else:
-                            dm.subapShift[i,wfs_n,0] = numpy.nan
-                            dm.subapShift[i,wfs_n,1] = numpy.nan
+                        dm.subapShift_influence[i,wfs_n,0] = true_locx
+                        dm.subapShift_influence[i,wfs_n,1] = true_locy
                         
-                        # POS = dm.valid_act_coords[i] - dm.valid_act_coords.max()//2
-                        # xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
-                        # xx -= xx.max()/2.
-                        # xx /= wfs.nx_subap_interp
-                        # MAX = numpy.nanmax(-no_aberration)
-                        # MIN = numpy.nanmin(-no_aberration)
-                        # # plt.imshow(with_aberration);plt.show()
-                        # plt.pcolor(xx,xx,with_aberration.T,vmin=MIN,vmax=MAX)
-                        # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        # plt.plot(true_locx + POS[0],true_locy+POS[1],ls='',marker='o',color='r',label='true max')
-                        # plt.plot(POS[0],POS[1],ls='',marker='^',color='k',label='original max')
-                        # # plt.title('real interaction'
-                        # #           + '\nact_original at ({:.2f},{:.2f})'.format(POS[0],POS[1])
-                        # #           + '\nact_actual at ({:.2f},{:.2f})'.format(true_locx+POS[0],true_locy+POS[1])
-                        # #           + '\nshift = ({:.2f},{:.2f})'.format(true_locx,true_locy))
-                        # plt.axis('square')
-                        # plt.colorbar()
-                        # # plt.savefig('im{:d}.png'.format(i))
-                        # plt.show()
+                        # else:
+                        #     dm.subapShift[i,wfs_n,0] = numpy.nan
+                        #     dm.subapShift[i,wfs_n,1] = numpy.nan
+                        
+                        if (plot == True):# and (i == 40):
+                            POS = dm.valid_act_coords[i] - dm.valid_act_coords.max()//2
+                            xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
+                            xx -= xx.max()/2.
+                            xx /= wfs.nx_subap_interp
+                            no_aberration -= numpy.nanmean(no_aberration)
+                            MAX = numpy.nanmax(-no_aberration)#0.006#
+                            MIN = numpy.nanmin(-no_aberration)#-0.006#
+                            # plt.imshow(with_aberration);plt.show()
+                            with_aberration -= numpy.nanmedian(with_aberration)
+                            plt.pcolor(xx,xx,with_aberration,vmin=MIN,vmax=MAX)
+                            plt.plot(POS[1],POS[0],ls='',marker='o',color='tab:pink',label='true location',markeredgecolor='white')
+                            # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                            # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                            plt.plot(true_locy+POS[1],true_locx + POS[0],ls='',marker='X',color='r',markeredgecolor='white',label='apparent position : influence')
+                            # plt.plot(POS[1],POS[0],ls='',marker='^',color='k',label='original max')
+                            # plt.title('real interaction'
+                            #           + '\nact_original at ({:.2f},{:.2f})'.format(POS[0],POS[1])
+                            #           + '\nact_actual at ({:.2f},{:.2f})'.format(true_locx+POS[0],true_locy+POS[1])
+                            #           + '\nshift = ({:.2f},{:.2f})'.format(true_locx,true_locy))
+                            plt.axis('square')
+                            # plt.legend()
+                            plt.colorbar()
+                            # plt.xlim(-position.max()/2-1,position.max()/2+1)
+                            # plt.ylim(-position.max()/2-1,position.max()/2+1)
+                            # plt.savefig('im{:d}.png'.format(i))
+                        
+                        if (i == ACT_LIST).any():
+                            
+                            # print(i,ACT_LIST)
+                            # print(DM_POS_TEMP,DM_POS_TEMP[numpy.where(ACT_LIST == i),:])
+                            # print(measure_AS_from_poke(
+                            #     iMat[i, n_wfs_measurments: n_wfs_measurments+wfs.n_measurements],
+                            #     position,DM_POS_TEMP[numpy.where(ACT_LIST == i),:],0.5))
+                            
+                            dm.subapShift_slope[i,wfs_n] = measure_AS_from_poke(
+                                iMat[i, n_wfs_measurments: n_wfs_measurments+wfs.n_measurements],
+                                position,DM_POS_TEMP[numpy.where(ACT_LIST == i),:],0.25,debug=plot)
+                        
+                        
+                        if (plot == True):# and (i == 40):
+                            # POS = dm.valid_act_coords[i] - dm.valid_act_coords.max()//2
+                            # xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
+                            # xx -= xx.max()/2.
+                            # xx /= wfs.nx_subap_interp
+                            # MAX = numpy.nanmax(-no_aberration)
+                            # MIN = numpy.nanmin(-no_aberration)
+                            # # plt.imshow(with_aberration);plt.show()
+                            # plt.pcolor(xx,xx,with_aberration,vmin=MIN,vmax=MAX)
+                            # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                            # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                            # plt.plot(true_locy+POS[1],true_locx + POS[0],ls='',marker='o',color='r',label='true max')
+                            
+                            # # plt.title('real interaction'
+                            # #           + '\nact_original at ({:.2f},{:.2f})'.format(POS[0],POS[1])
+                            # #           + '\nact_actual at ({:.2f},{:.2f})'.format(true_locx+POS[0],true_locy+POS[1])
+                            # #           + '\nshift = ({:.2f},{:.2f})'.format(true_locx,true_locy))
+                            # plt.axis('square')
+                            # plt.legend()
+                            # plt.colorbar()
+                            plt.xlim(-position.max()/2-0.5,position.max()/2+0.5)
+                            plt.ylim(-position.max()/2-0.5,position.max()/2+0.5)
+                            plt.legend()
+                            plt.savefig('im{:d}.png'.format(i))
+                            plt.show()
+                            
+                            nxsubap = wfs.soapy_config.wfss[0].nxSubaps
+                            pxlsPerSubap = wfs.soapy_config.wfss[0].pxlsPerSubap
+                            low_bound = nxsubap//2*pxlsPerSubap
+                            up_bound = (nxsubap//2+1)*pxlsPerSubap
+                            
+                            plt.imshow(wfs.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
+                            plt.title('sample wfs subap')
+                            plt.show()
+                            
+                            plt.imshow(wfs.wfsDetectorPlane)
+                            plt.title('sample wfs')
+                            plt.show()
 
                         
                     
@@ -728,8 +1008,9 @@ class Reconstructor(object):
             if callback != None:
                 callback()
 
+            
             logger.statusMessage(i, dm.n_acts,
-                                 "Generating {} Actuator DM iMat".format(dm.n_acts))
+                                "Generating {} Actuator DM iMat".format(dm.n_acts))
         
         if ABERRATION == True:
             logger.info("NOT Checking for redundant actuators...")
@@ -1509,13 +1790,13 @@ class ANN(Reconstructor):
         self.Trecon += time.time()-t
         return dmCommands
 
-def get_rcond_adaptive_threshold_rank(A,plot=False,return_place=False):
+def get_rcond_adaptive_threshold_rank(A,plot=False,return_place=False,threshold_rank=0.5):
   _,s,_ = numpy.linalg.svd(A)
   s /= s.max()
   energy = s**2
   energy /= energy.sum()
   accumulated_energy = numpy.zeros_like(energy)
-  threshold = 1/2./numpy.linalg.matrix_rank(A)
+  threshold = threshold_rank/numpy.linalg.matrix_rank(A)
 
   for i in numpy.arange(energy.shape[0]):
     accumulated_energy[i] = energy[:i].sum()
@@ -1548,6 +1829,7 @@ def pinv_adaptive_threshold_rank(A,return_rcond=False):
         return pinvA
     else:
         rcond, place = get_rcond_adaptive_threshold_rank(A,return_place=True)
+        pinvA = numpy.linalg.pinv(A,rcond=rcond)
         return pinvA, rcond, place
 
 # def make_quiver_plot(wfs):
@@ -1666,3 +1948,366 @@ def find_centre(corr,nx_subap_interp):
         return numpy.nan, numpy.nan
     
     return true_locx, true_locy
+
+
+# def rearrange1(A, position):
+#     """
+#     rearrange soapy reported wfs value from 1d with skips into 2d
+
+#     Parameters
+#     ----------
+#     A : TYPE
+#         DESCRIPTION.
+#     position : TYPE
+#         DESCRIPTION.
+
+#     Returns
+#     -------
+#     a : TYPE
+#         DESCRIPTION.
+
+#     """
+#     N = position.shape[0]
+#     size = numpy.max(position) - numpy.min(position) + 1
+#     DIM = position.shape[1]
+#     a = numpy.zeros((size,)*DIM, dtype=float)
+#     for n in numpy.arange(N):
+#         a[tuple(position[n])] = A[n]
+#     a[a==0] = numpy.nan
+#     return a
+
+def measure_AS_from_IM(IM,SHWFS_position,ACT_list,ACT_position,threshold, debug=False):
+    # debug= False
+    position = SHWFS_position
+
+    ACT_LIST = ACT_list
+
+    DM_POS_TEMP = ACT_position
+
+    nACT = IM.shape[0]
+    nSubap = IM.shape[1]
+
+    DM_POS = numpy.zeros([nACT, 2],dtype=float)
+    
+    j = 0
+    for i in numpy.arange(nACT):
+        if (i==ACT_LIST).any():
+            DM_POS[i,0] = DM_POS_TEMP[j,1]
+            DM_POS[i,1] = DM_POS_TEMP[j,0]
+            j += 1
+        else:
+            DM_POS[i,:] = numpy.nan
+            
+    # DM_GRID = numpy.arange(DM_POS_TEMP.min(),DM_POS_TEMP.max() + 1)
+    WFS_GRID = numpy.arange(position.min(),position.max() + 1)
+    WFS_GRID_X,WFS_GRID_Y = numpy.meshgrid(WFS_GRID,WFS_GRID)
+
+    CEN = numpy.zeros((nACT,2),dtype=float)
+    CEN[:] = numpy.nan
+
+    for act in ACT_LIST:#numpy.arange(83):
+
+        
+        IM /= numpy.abs(numpy.nanmax(IM))
+        
+        #for act in ACT_LIST:
+    
+        # act = 42
+        WFS_MAP_X = rearrange1(IM[act][:nSubap//2], position)
+        WFS_MAP_Y = rearrange1(IM[act][nSubap//2:], position)
+        
+        # cen_x = numpy.nansum(WFS_GRID_X*WFS_MAP_X**2)/numpy.nansum(WFS_GRID_X*WFS_MAP_X**2/WFS_GRID_X)
+        # cen_y = numpy.nansum(WFS_GRID_Y*WFS_MAP_Y**2)/numpy.nansum(WFS_GRID_Y*WFS_MAP_Y**2/WFS_GRID_Y)
+        
+        # plt.clf()
+        # fig,axes = plt.subplots(1,2,sharey=True)
+        # axes[0].imshow(WFS_MAP_X,vmin=-1,vmax=1,cmap='RdBu')
+        # CS = axes[1].imshow(WFS_MAP_Y,vmin=-1,vmax=1,cmap='RdBu')
+        # fig.tight_layout()
+        # axes[0].set_title('x_slope')
+        # axes[1].set_title('y_slope')
+        # cbar_ax = fig.add_axes([1,0.17,0.05,0.65])
+        # axes[0].plot(DM_POS[act,0],DM_POS[act,1],marker='o',color='k')
+        # axes[1].plot(DM_POS[act,0],DM_POS[act,1],marker='o',color='k')
+        # fig.colorbar(CS,cax=cbar_ax)
+        # fig.suptitle('act#{}'.format(act))
+        # plt.show()
+        
+        # plt.clf()
+        # # plt.plot(DM_POS[act,0],DM_POS[act,1],color='r',marker='o')
+        # plt.quiver(WFS_GRID_X,WFS_GRID_Y,
+        #            WFS_MAP_X,WFS_MAP_Y,scale=5)
+        
+        WFS_MAP = (WFS_MAP_X**2 + WFS_MAP_Y**2)**0.5
+        
+        WFS_MAP[WFS_MAP < threshold] = numpy.nan
+        WFS_MAP_X[WFS_MAP < threshold] = numpy.nan
+        WFS_MAP_Y[WFS_MAP < threshold] = numpy.nan
+        
+        MAX4 = numpy.sort(WFS_MAP[~numpy.isnan(WFS_MAP)].flatten())#[-4:]
+        
+        WFS_MAP_X_MAX4 = numpy.zeros_like(WFS_MAP)
+        WFS_MAP_Y_MAX4 = numpy.zeros_like(WFS_MAP)
+        WFS_MAP_X_MAX4[:] = numpy.nan
+        WFS_MAP_Y_MAX4[:] = numpy.nan
+        
+        
+        
+        MAX4_POS = numpy.zeros((MAX4.shape[0],2),dtype=int)
+        v_x = numpy.zeros((MAX4.shape[0]),dtype=float)
+        v_y = numpy.zeros((MAX4.shape[0]),dtype=float)
+        
+        for i in numpy.arange(MAX4.shape[0]):
+            loc = numpy.asarray(numpy.where(WFS_MAP == MAX4[i]))[:,0]
+            MAX4_POS[i] = loc
+            WFS_MAP_X_MAX4[tuple(MAX4_POS[i])] = WFS_MAP_X[tuple(MAX4_POS[i])]
+            WFS_MAP_Y_MAX4[tuple(MAX4_POS[i])] = WFS_MAP_Y[tuple(MAX4_POS[i])]
+            v_x[i] = WFS_MAP_X_MAX4[tuple(MAX4_POS[i])]
+            v_y[i] = WFS_MAP_Y_MAX4[tuple(MAX4_POS[i])]
+            
+        if debug:
+            plt.quiver(WFS_GRID_X,WFS_GRID_Y,
+                       WFS_MAP_X_MAX4,WFS_MAP_Y_MAX4,scale=5,color='r')
+            
+            x_standard = numpy.linspace(WFS_GRID.min(),WFS_GRID.max())
+            x = numpy.zeros((MAX4.shape[0],x_standard.shape[0]))
+            y = numpy.zeros((MAX4.shape[0],x_standard.shape[0]),dtype=float)
+            for i in numpy.arange(MAX4.shape[0]):
+                m = v_x[i]/v_y[i]
+                x[i] = x_standard
+                y[i] = m*(x[i] - MAX4_POS[i][0]) + MAX4_POS[i][1]
+                
+                # y[i] = (x_standard*v_x[i] + MAX4_POS[i][1])
+                # x[i] = (x_standard*v_y[i] + MAX4_POS[i][0])
+            
+                # plt.plot(y[i],x[i],ls=':',color='b',marker='',alpha=0.5)
+        
+        cross = numpy.zeros((MAX4.shape[0],MAX4.shape[0],2),dtype=float)
+        cross[:] = numpy.nan
+        trustability = numpy.zeros((MAX4.shape[0],MAX4.shape[0]),dtype=float)
+        
+        for i in numpy.arange(MAX4.shape[0]):
+            for j in numpy.arange(i + 1,MAX4.shape[0]):
+                mi = (v_y[i]/v_x[i])**-1
+                mj = (v_y[j]/v_x[j])**-1
+                xi = MAX4_POS[i][0]#x[i]
+                xj = MAX4_POS[j][0]#x[j]
+                yi = MAX4_POS[i][1]#y[i]
+                yj = MAX4_POS[j][1]#y[j]
+                
+                cross[i,j,1] = ((yi - yj) + (mj*xj - mi*xi))/(mj - mi)
+                cross[i,j,0] = yi + mi*(cross[i,j,1] - xi)
+                
+                if (
+                        
+                        (not (((yi - cross[i,j,0])/v_x[i] >= 0)
+                              and ((xi - cross[i,j,1])/v_y[i] >= 0)
+                              and ((yj - cross[i,j,0])/v_x[j] >= 0)
+                              and ((xj - cross[i,j,1])/v_y[j] >= 0)))
+                        
+                        or
+                        
+                        ((cross[i,j,0] < (WFS_GRID.min() - 0.5))
+                         or (cross[i,j,0] > (WFS_GRID.max() + 0.5))
+                         or (cross[i,j,1] < (WFS_GRID.min() - 0.5))
+                         or (cross[i,j,1] > (WFS_GRID.max() + 0.5)))
+                        
+                        ):
+
+                    cross[i,j,0] = numpy.nan
+                    cross[i,j,1] = numpy.nan
+                    
+                else:
+                    if debug:
+                        plt.plot(cross[i,j,0],cross[i,j,1],marker='o',color='g')
+                        
+                        plt.plot(y[i],x[i],ls=':',color='b',marker='')
+                        plt.plot(y[j],x[j],ls=':',color='b',marker='')
+                        plt.quiver(WFS_GRID_X,WFS_GRID_Y,
+                                   WFS_MAP_X_MAX4,WFS_MAP_Y_MAX4,scale=5)
+                        plt.plot(DM_POS[act,0],DM_POS[act,1],color='r',marker='o')
+                        # plt.show()
+                        # plt.plot(cen_x,cen_y,marker='x',color='b')
+                        # plt.axis('square')
+                        # plt.xlim(-0.5,7.5)
+                        # plt.ylim(-0.5,7.5)
+                        # plt.title(name_list[i_aber_z_list] + '\n'
+                        #     'act#{}'.format(act)
+                        #     +'\n{}{}'.format(i,j))
+                        # plt.show()
+                    size = ((WFS_MAP_X[tuple(MAX4_POS[i])]**2
+                             + WFS_MAP_X[tuple(MAX4_POS[j])]**2)**0.5
+                            * (WFS_MAP_Y[tuple(MAX4_POS[i])]**2
+                               + WFS_MAP_Y[tuple(MAX4_POS[j])]**2)**0.5)
+                    trustability[i,j] = size#**2
+        
+        cen_x = numpy.nansum(cross[...,0]*trustability)/numpy.nansum(trustability)
+        cen_y = numpy.nansum(cross[...,1]*trustability)/numpy.nansum(trustability)
+        
+        CEN[act] = [cen_x - DM_POS[act,0], cen_y - DM_POS[act,1]]
+        if debug:
+            plt.plot(cen_x,cen_y,marker='o',color='b')
+            plt.axis('square')
+            plt.xlim(-0.5,7.5)
+            plt.ylim(-0.5,7.5)
+            # plt.title(name_list[i_aber_z_list] + '\n'
+            #     'act#{}'.format(act))
+            plt.show()
+
+    return CEN
+
+def measure_AS_from_poke(slope,SHWFS_position,ACT_position,threshold,debug=False):
+    # debug= True
+    position = SHWFS_position
+
+    nSubap = slope.shape[0]
+
+    DM_POS = ACT_position[0][0][::-1]
+    
+    
+            
+    # DM_GRID = numpy.arange(DM_POS_TEMP.min(),DM_POS_TEMP.max() + 1)
+    WFS_GRID = numpy.arange(position.min(),position.max() + 1)
+    WFS_GRID_X,WFS_GRID_Y = numpy.meshgrid(WFS_GRID,WFS_GRID)
+
+    CEN = numpy.zeros((2),dtype=float)
+    CEN[:] = numpy.nan
+
+    
+
+        
+    # slope /= numpy.abs(numpy.nanmax(slope))
+    # print(position.shape)
+    # print(slope.shape)
+
+    WFS_MAP_X = rearrange1(slope[:nSubap//2], position)
+    WFS_MAP_Y = rearrange1(slope[nSubap//2:], position)
+    
+
+    
+    WFS_MAP = (WFS_MAP_X**2 + WFS_MAP_Y**2)**0.5
+    
+    
+    WFS_MAP_X /= numpy.nanmax(WFS_MAP)
+    WFS_MAP_Y /= numpy.nanmax(WFS_MAP)
+    WFS_MAP /= numpy.nanmax(WFS_MAP)
+    
+    
+    WFS_MAP[WFS_MAP < threshold] = numpy.nan
+    WFS_MAP_X[WFS_MAP < threshold] = numpy.nan
+    WFS_MAP_Y[WFS_MAP < threshold] = numpy.nan
+    
+    MAX4 = numpy.sort(WFS_MAP[~numpy.isnan(WFS_MAP)].flatten())#[-4:]
+    
+    WFS_MAP_X_MAX4 = numpy.zeros_like(WFS_MAP)
+    WFS_MAP_Y_MAX4 = numpy.zeros_like(WFS_MAP)
+    WFS_MAP_X_MAX4[:] = numpy.nan
+    WFS_MAP_Y_MAX4[:] = numpy.nan
+    
+    if debug:
+        recenter = SHWFS_position.max()/2
+    
+    MAX4_POS = numpy.zeros((MAX4.shape[0],2),dtype=int)
+    v_x = numpy.zeros((MAX4.shape[0]),dtype=float)
+    v_y = numpy.zeros((MAX4.shape[0]),dtype=float)
+    
+    for i in numpy.arange(MAX4.shape[0]):
+        loc = numpy.asarray(numpy.where(WFS_MAP == MAX4[i]))[:,0]
+        MAX4_POS[i] = loc
+        WFS_MAP_X_MAX4[tuple(MAX4_POS[i])] = WFS_MAP_X[tuple(MAX4_POS[i])]
+        WFS_MAP_Y_MAX4[tuple(MAX4_POS[i])] = WFS_MAP_Y[tuple(MAX4_POS[i])]
+        v_x[i] = WFS_MAP_X_MAX4[tuple(MAX4_POS[i])]
+        v_y[i] = WFS_MAP_Y_MAX4[tuple(MAX4_POS[i])]
+        
+    if debug:
+        plt.quiver(WFS_GRID_X - recenter,WFS_GRID_Y - recenter,
+                   WFS_MAP_X,WFS_MAP_Y,scale=5,color='k')#
+        
+        x_standard = numpy.linspace(WFS_GRID.min(),WFS_GRID.max())
+        x = numpy.zeros((MAX4.shape[0],x_standard.shape[0]))
+        y = numpy.zeros((MAX4.shape[0],x_standard.shape[0]),dtype=float)
+        for i in numpy.arange(MAX4.shape[0]):
+            m = v_x[i]/v_y[i]
+            x[i] = x_standard
+            y[i] = m*(x[i] - MAX4_POS[i][0]) + MAX4_POS[i][1]
+            
+            # y[i] = (x_standard*v_x[i] + MAX4_POS[i][1])
+            # x[i] = (x_standard*v_y[i] + MAX4_POS[i][0])
+        
+            # plt.plot(y[i],x[i],ls=':',color='b',marker='',alpha=0.5)
+    
+    cross = numpy.zeros((MAX4.shape[0],MAX4.shape[0],2),dtype=float)
+    cross[:] = numpy.nan
+    trustability = numpy.zeros((MAX4.shape[0],MAX4.shape[0]),dtype=float)
+    
+    for i in numpy.arange(MAX4.shape[0]):
+        for j in numpy.arange(i + 1,MAX4.shape[0]):
+            mi = (v_y[i]/v_x[i])**-1
+            mj = (v_y[j]/v_x[j])**-1
+            xi = MAX4_POS[i][0]#x[i]
+            xj = MAX4_POS[j][0]#x[j]
+            yi = MAX4_POS[i][1]#y[i]
+            yj = MAX4_POS[j][1]#y[j]
+            
+            cross[i,j,1] = ((yi - yj) + (mj*xj - mi*xi))/(mj - mi)
+            cross[i,j,0] = yi + mi*(cross[i,j,1] - xi)
+            
+            if (
+                    
+                    (not (((yi - cross[i,j,0])/v_x[i] >= 0)
+                          and ((xi - cross[i,j,1])/v_y[i] >= 0)
+                          and ((yj - cross[i,j,0])/v_x[j] >= 0)
+                          and ((xj - cross[i,j,1])/v_y[j] >= 0)))
+                    
+                    or
+                    
+                    ((cross[i,j,0] < (WFS_GRID.min() - 0.5))
+                     or (cross[i,j,0] > (WFS_GRID.max() + 0.5))
+                     or (cross[i,j,1] < (WFS_GRID.min() - 0.5))
+                     or (cross[i,j,1] > (WFS_GRID.max() + 0.5)))
+                    
+                    ):
+
+                cross[i,j,0] = numpy.nan
+                cross[i,j,1] = numpy.nan
+                
+            else:
+                if debug:
+                    # plt.plot(cross[i,j,0] - recenter,cross[i,j,1] - recenter,marker='s',color='tab:orange')
+                    
+                    # plt.plot(y[i] - recenter,x[i] - recenter,ls=':',color='b',marker='')
+                    # plt.plot(y[j] - recenter,x[j] - recenter,ls=':',color='b',marker='')
+                    plt.quiver(WFS_GRID_X - recenter,WFS_GRID_Y - recenter,
+                               WFS_MAP_X_MAX4,WFS_MAP_Y_MAX4,scale=5,color='tab:orange')
+                    # print(DM_POS)
+                    
+                    # plt.show()
+                    # plt.plot(cen_x,cen_y,marker='x',color='b')
+                    # plt.axis('square')
+                    # plt.xlim(-0.5,7.5)
+                    # plt.ylim(-0.5,7.5)
+                    # plt.title(name_list[i_aber_z_list] + '\n'
+                    #     'act#{}'.format(act)
+                    #     +'\n{}{}'.format(i,j))
+                    # plt.show()
+                size = ((WFS_MAP_X[tuple(MAX4_POS[i])]**2
+                         + WFS_MAP_X[tuple(MAX4_POS[j])]**2)**0.5
+                        * (WFS_MAP_Y[tuple(MAX4_POS[i])]**2
+                           + WFS_MAP_Y[tuple(MAX4_POS[j])]**2)**0.5)
+                trustability[i,j] = size#**2
+    
+    cen_x = numpy.nansum(cross[...,0]*trustability)/numpy.nansum(trustability)
+    cen_y = numpy.nansum(cross[...,1]*trustability)/numpy.nansum(trustability)
+    
+    CEN = [cen_x - DM_POS[0], cen_y - DM_POS[1]]
+    if debug:
+        plt.plot(cen_x - recenter,cen_y - recenter,marker='P',color='tab:orange',ls='',label='apparent position : slope',markeredgecolor='white')
+        # plt.plot(DM_POS[0] - recenter,DM_POS[1] - recenter,color='k',marker='o',label='actuator true location')
+        plt.axis('square')
+        # plt.xlim(-0.5 - recenter,7.5 - recenter)
+        # plt.ylim(-0.5 - recenter,7.5 - recenter)
+        # plt.title(name_list[i_aber_z_list] + '\n'
+        #     'act#{}'.format(act))
+        # plt.show()
+
+    return CEN

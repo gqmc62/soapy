@@ -632,7 +632,7 @@ class Sim(object):
         
         if self.run_away == False:
             if (self.dmCommands > self.command_bound).any():
-                # self.go = False
+                self.go = False
                 print('dm strokes too large at {:} iteration.'.format(self.iters))
                 self.run_away = True
                 self.run_away_iteration = self.iters

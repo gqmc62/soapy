@@ -31,6 +31,12 @@ Examples::
 
 """
 
+###############################################################################
+# physical propagation in this class can be optimized further
+# by rather converting to spatial space at every step before adding more phase
+# add them in fourier space instead.
+###############################################################################
+
 import numpy
 
 import aotools
@@ -292,11 +298,17 @@ class LineOfSight(object):
             ################
             
             # self.min_z_prop = self.out_pixel_scale / self.wavelength**2
-
-            self.max_grid_diffraction_angle = self.wavelength/2./self.out_pixel_scale
-            self.max_diffraction_angle = self.soapy_config.sim.max_diffraction_angle
-            # self.max_diffraction_angle = self.wavelength/2./self.out_pixel_scale
             
+            ###################################################################
+            # 'diffraction' angle
+            ###################################################################
+            # math
+            self.max_grid_diffraction_angle = self.wavelength/2./self.out_pixel_scale 
+            #
+            # physics
+            self.max_diffraction_angle = self.soapy_config.sim.max_diffraction_angle 
+            # self.max_diffraction_angle = self.wavelength/2./self.out_pixel_scale
+            ###################################################################
 
             
             # ***** !!!!!
@@ -306,17 +318,27 @@ class LineOfSight(object):
             
             # dm & atm are previously atm pad = (original + 2wvlz/r0/delta pxl each side)
             
-            
-            
+            ###################################################################
+            # minimum size due to physics = pupil + (atmos diffrac + FOV)
+            ###################################################################
+            # cover all possible input
+            # this is for propagation process after the interpolation
+            # so now the input is at the output scale
             self.nx_in_pixels = int(numpy.ceil(
                 (self.nx_out_pixels
                  + numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
                  * (2*self.max_diffraction_angle + self.FOV)/self.out_pixel_scale)
                 /2)*2)
-            
+            # bump to the next subap
+            self.nx_in_pixels = int(numpy.ceil(
+                self.nx_in_pixels / (self.nx_out_pixels/self.soapy_config.wfss[0].nxSubaps) + 1)
+                * (self.nx_out_pixels/self.soapy_config.wfss[0].nxSubaps))
+            if self.nx_in_pixels%2 != 0:
+                self.nx_in_pixels += 1
+            ###################################################################
             
             # prop screen is the minimum of these two where either
-            # to be mirror prop pad to 2x(original + atm pad pxl each side)
+            # to be mirror prop pad to 2x(original + atm pad pxl each side) # why?
             # or
             # to prop pad size of (original + wvlz/2/delta**2 pxl each side)
             # the prop pad, the perfect math, usually larger than 2x(original + 2x atm pad)
@@ -327,25 +349,50 @@ class LineOfSight(object):
             # mirror/symmetric pad because it reduces high spatial frequency
             # which is the main source of noise.
             # discontinuity = smaller than 2pxl frequency = alias into all frequency = noise!!
+            
+            ###################################################################
+            # variables description
+            # 1. nx_prop_pixels = total simulation pixel
+            # 2. nx_in_pixels
+            ###################################################################
+
+            ###################################################################
+            # simulation screen size = max of any of these
+            # 1: 2 x physical requirement
+            # 2: Physical requirement + math wrapping prevention
+            # 3: stop aliasing
+            ###################################################################
             self.nx_prop_pixels = int(round(
                 numpy.max([
+
+                    # must be larger than input and output !! this is super important !!
+                    # DONT EVER REMOVE THIS CRITERIA !!
+                    # it's really important for this combo of conditions.
+                    self.nx_in_pixels, self.nx_out_pixels,
                     
-                    (2*self.nx_in_pixels),
-                    
-                    # (self.nx_in_pixels//2 + self.nx_out_pixels//2
-                    #  + (numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
-                    #                     * (self.max_grid_diffraction_angle)/self.out_pixel_scale)),
-                    
-                    (self.nx_in_pixels
-                     + (numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
+                    # (2*self.nx_in_pixels),
+                    # no wrapping in general (data correct until edge of nin)
+                    (self.nx_in_pixels//2 + self.nx_out_pixels//2
+                      + (numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
                                         * (self.max_grid_diffraction_angle)/self.out_pixel_scale)),
                     
-                    
+                    # no wrapping for free atmosphere (data correct until edge of sim).
+                    # because we symmetric pad atm from phys to propsize, there is discontinuity at the edge.
+                    # the require extra space is now double.
+                    # this only apply to atm heights and dm heights is not needed in here
+                    # but well i still add dm height in for safety, i don't want any overlapping
+                    (self.nx_out_pixels
+                      + (numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
+                                        * 2*(self.max_grid_diffraction_angle)/self.out_pixel_scale)),
+                    # no aliasing
                     self.wavelength*numpy.max(numpy.concatenate([
                         self.layer_altitudes,self.dm_altitudes,[0]]))/self.out_pixel_scale**2,
                     
                     ])
                 /2)*2)
+            ###################################################################
+            
+            
             # self.nx_prop_pixels = int(round(
             #     numpy.max([
                     
@@ -378,6 +425,7 @@ class LineOfSight(object):
             self.low_buf = (self.nx_prop_pixels - self.nx_out_pixels)//2
             self.high_buf = (self.nx_prop_pixels + self.nx_out_pixels)//2
             
+            # use self.pad to pad physical input into mathematically equivalent input
             self.pad = (self.nx_prop_pixels - self.nx_in_pixels)//2
             
             test_result = test_propagation_parameters(self.wavelength,
@@ -423,17 +471,19 @@ class LineOfSight(object):
                 centre += self.launch_position * (1 - layer_altitude/self.source_altitude)
                 
         if self.config.propagationMode == 'Physical':
-            if self.source_altitude != 0:
+            if self.source_altitude != 0: # if it is a point source, then we have expanding meta-pupil in cone shape to telescope
                 meta_pupil_size = (self.nx_in_pixels*self.out_pixel_scale * (1 - layer_altitude / self.source_altitude))
                 # print('currently not supporting this')
             else:
-                meta_pupil_size = self.nx_in_pixels*self.out_pixel_scale
+                meta_pupil_size = self.nx_in_pixels*self.out_pixel_scale # meta_pupil_size cover all required c=4 diffraction
         else:
             if self.source_altitude != 0:
                 meta_pupil_size = self.output_phase_diameter * (1 - layer_altitude / self.source_altitude)
             else:
                 meta_pupil_size = self.output_phase_diameter
 
+        # (phys_centre +- phys_radius) / input_scale ==> index position with 0 = edge
+        # x1,x2,y1,y2 ==> cover the meta_pupil_size with given number of pixel (nx_in)
         x1 = ((centre[0] - meta_pupil_size / 2.) / self.in_pixel_scale) + self.nx_scrn_size / 2.
         x2 = ((centre[0] + meta_pupil_size / 2.) / self.in_pixel_scale) + self.nx_scrn_size / 2.
         y1 = ((centre[1] - meta_pupil_size / 2.) / self.in_pixel_scale) + self.nx_scrn_size / 2.
@@ -510,7 +560,9 @@ class LineOfSight(object):
         
         if self.config.propagationMode == 'Physical':
             self.prop_mask = numpy.zeros((self.nx_prop_pixels,self.nx_prop_pixels))
+            # self.nprop2nout use to crop out propagation size to science size # prop ==> out
             self.nprop2nout = (self.nx_prop_pixels - self.nx_out_pixels)//2
+            # print(self.nx_prop_pixels , self.nx_out_pixels,self.nprop2nout,self.outMask.shape)
             if self.nprop2nout == 0:
                 self.prop_mask = self.outMask
             else:
@@ -757,6 +809,11 @@ class LineOfSight(object):
         # either up or down, still need to start from pupil, ... right?
         # anyway for 'down' definitely need to pick up from the pupil
         for i in range(correction.shape[0]):
+            temp_correction = numpy.copy(correction[i])
+            temp_correction[0] = 0
+            temp_correction[-1] = 0
+            temp_correction[:,0] = 0
+            temp_correction[:,-1] = 0
             
             numbalib.bilinear_interp(
                 correction[i], self.dm_metapupil_coords[i, 0], self.dm_metapupil_coords[i, 1],
@@ -1113,11 +1170,21 @@ class LineOfSight(object):
             self.performCorrection(correction,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
 
         # Now do propagation through atmospheric turbulence
-        if scrns is not None:
-            if scrns.ndim==2:
-                scrns.shape = 1, scrns.shape[0], scrns.shape[1]
-            self.scrns = scrns
-            self.makePhase(self.radii)
+        if (scrns is not None):
+            if ((numpy.asarray(scrns).flatten()**2).sum() != 0):
+                if scrns.ndim==2:
+                    scrns.shape = 1, scrns.shape[0], scrns.shape[1]
+                self.scrns = scrns
+                self.makePhase(self.radii)
+            else:
+                self.scrns = numpy.zeros(
+                    (self.n_layers, self.nx_scrn_size, self.nx_scrn_size))
+                self.EField_buf = numpy.ones([self.nx_prop_pixels] * 2, dtype=CDTYPE)
+                if self.prop_mask is not None:
+                    self.EField_buf[:] = np.copy(self.EField_buf[:] * self.prop_mask)
+                self.phase[:] = 0
+                self.EField = self.EField_buf[self.low_buf:self.high_buf,
+                                            self.low_buf:self.high_buf]
         else: # If no scrns, just assume no turbulence
             self.scrns = numpy.zeros(
                     (self.n_layers, self.nx_scrn_size, self.nx_scrn_size))
@@ -1269,7 +1336,7 @@ def physical_correction_propagation(
     if plot == True:
     
         A = EFieldBuf.shape[-1]
-        B = 159#self.plot_mask.shape[0]
+        B = 240#self.plot_mask.shape[0]
         
         mean_phase = np.sum((EFieldBuf)[(A-B)//2:(A+B)//2,
                                                     (A-B)//2:(A+B)//2])/np.sum(output_mask)
@@ -1403,7 +1470,7 @@ def physical_correction_propagation(
     if plot == True:
     
         A = EFieldBuf.shape[-1]
-        B = 159#self.plot_mask.shape[0]
+        B = 240#self.plot_mask.shape[0]
         
         mean_phase = np.sum((EFieldBuf)[(A-B)//2:(A+B)//2,
                                                     (A-B)//2:(A+B)//2])/np.sum(output_mask)
@@ -1443,6 +1510,7 @@ def physical_correction_propagation(
     
     return EFieldBuf
     
+# this could be optimized more by not fft to spatial space until the end of layer.
 def fixedScale_angularSpectrum_FFTW(Uin,z,Q2,FWFFT,BWFFT):
     if z == 0 :
         return Uin
@@ -1475,20 +1543,24 @@ def test_propagation_parameters(wvl,
     if conditions[0] == False:
         print('Currently having {}px of input, and need total {}px output,'.format(
             INPUTSIZE/scale,OUTPUTSIZE/scale+SPREAD/scale)
-              + '\nwhere {}px for accurate output and {}px of buffer,'.format(
+              + '\nwhere {}px for accurate output and {}px of atmos diffraction,'.format(
                   OUTPUTSIZE/scale,SPREAD/scale))
     
     # enough screen size to accommodate all data
     SCREENSIZE = N*scale
-    conditions[1] = ((SCREENSIZE >= INPUTSIZE)
-                     or numpy.isclose(SCREENSIZE,INPUTSIZE,rtol=1e-2))
+    conditions[1] = (
+        ((SCREENSIZE >= INPUTSIZE) or numpy.isclose(SCREENSIZE,INPUTSIZE,rtol=1e-2))
+        and
+        ((SCREENSIZE >= OUTPUTSIZE) or numpy.isclose(SCREENSIZE,OUTPUTSIZE,rtol=1e-2))
+        )
     if conditions[1] == False:
-        print('Currently having {}m of screen, while it needs {}m.'.format(
-            SCREENSIZE,INPUTSIZE))
+        print('Currently having {}m of screen, while it needs {}m input, and {}m output.'.format(
+            SCREENSIZE,INPUTSIZE,OUTPUTSIZE))
     
     # no wrapping on output
-    DATASPACE = (n_in/2. + n_out/2.)*scale
-    WRAPPING = angle*MAXZ
+    # the size of 'input' now is the prop size
+    DATASPACE = (N/2. + n_out/2.)*scale
+    WRAPPING = MAXANGLE*MAXZ
     AVAILABLESPACES = N*scale
     USE = DATASPACE + WRAPPING
     conditions[2] = ((AVAILABLESPACES >= USE)
@@ -1500,8 +1572,9 @@ def test_propagation_parameters(wvl,
     
     # conditions[3] = True
     # no false edge reaching pupil (inward direction while previous condition is outward)
-    BUFFER = (n_in - n_out)/2*scale
-    WRAPPING = angle*MAXZ
+    # the size of 'input' now is the prop size
+    BUFFER = (N - n_out)/2*scale
+    WRAPPING = MAXANGLE*MAXZ
     conditions[3] = ((BUFFER >= WRAPPING) or numpy.isclose(BUFFER,WRAPPING,rtol=1e-2))
     if conditions[3] == False:
         print('There is an inward wrapping. Need more input.')

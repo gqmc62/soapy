@@ -57,7 +57,7 @@ class ShackHartmann(wfs.WFS):
         self.subap_threshold = self.config.subapThreshold
 
         # Calculate some others
-        self.pixel_scale =self.subap_fov / self.nx_subap_pixels
+        self.pixel_scale = self.subap_fov / self.nx_subap_pixels
         self.subap_fov_rad = self.subap_fov * numpy.pi / (180. * 3600)
         self.subap_diam = self.telescope_diameter/self.nx_subaps
         self.nm_to_rad = 1e-9 * (2 * numpy.pi) / self.wavelength
@@ -87,6 +87,9 @@ class ShackHartmann(wfs.WFS):
                 self.nx_subaps*self.nx_subap_interp*
                 (float(self.sim_size)/self.pupil_size)
                 ))
+        
+        if self.nx_interp_efield%2 == 1:
+            self.nx_interp_efield += 1
 
         # If physical prop, must always be at same pixel scale because we can't interpolate EField afterwards
         # If not, can use less phase points for speed
@@ -384,6 +387,8 @@ class ShackHartmann(wfs.WFS):
             self.temp_subap_intensity *= intensity
 
         self.subap_focus_intensity += self.temp_subap_intensity
+        
+        
 
 
     def integrateDetectorPlane(self):
@@ -430,6 +435,9 @@ class ShackHartmann(wfs.WFS):
         if self.config.eReadNoise!=0:
             self.addReadNoise()
             
+
+
+            
         # plt.imshow(self.detector/self.detector.max(),vmin=0,vmax=1)
         # plt.colorbar()
         # plt.title('wfs detector plane')
@@ -474,6 +482,7 @@ class ShackHartmann(wfs.WFS):
         slopes = getattr(centroiders, self.config.centMethod)(
                 self.centSubapArrays,
                 threshold=self.config.centThreshold,
+                min_threshold=self.config.globalCentThreshold*self.centSubapArrays.max(-1).max(-1),
                 ref=self.referenceImage
                 )
 

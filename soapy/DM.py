@@ -358,6 +358,10 @@ class Piezo(DM):
         """
         activeActs = []
         xActs = self.dmConfig.nxActuators
+        # use -1 for fried geometry
+        # in this case dm act position is centre starting from pupil edge
+        # resulting in xacts-1 act span ove the pupil/active pupil of the dm
+        # nx_dm_elements is pupil by default.
         self.spcing = self.nx_dm_elements/float(xActs - 1)
 
         for x in xrange(xActs):
@@ -504,6 +508,9 @@ class FastPiezo(Piezo):
 
         # DM size is the pupil size, but withe one extra act on each side
         self.dmSize =  self.nx_dm_elements + 2 * numpy.round(self.spcing)
+        # because we add 1 act on each side we add 2 extra pitch
+        # also interp.zoom_rbs will have edge act centre on the edge of the returning screen
+        # so we use clear ap size + 2 pitch.
 
         return acts
 
@@ -513,6 +520,7 @@ class FastPiezo(Piezo):
     def makeDMFrame(self, actCoeffs):
 
         self.actGrid[:] = 0
+        # print(self.actGrid[(self.valid_act_coords[:, 0], self.valid_act_coords[:, 1])].shape,actCoeffs.shape)
         self.actGrid[(self.valid_act_coords[:, 0], self.valid_act_coords[:, 1])] = actCoeffs*self.config.iMatValue
         # plt.imshow(self.actGrid)
         # plt.colorbar()
@@ -589,6 +597,8 @@ class Aberration(DM):
         return self.n_active_actuators
     
     def makeDMFrame(self,actCoeffs='flat'):
+        if type(actCoeffs) != str:
+            actCoeffs='flat'
         if self.config.r0 == numpy.inf:
             self.aberration = numpy.zeros((self.nx_dm_elements,self.nx_dm_elements),dtype=float)
             return self.aberration
@@ -825,7 +835,7 @@ def perfect_dm(phase,delta,dm_pitch):
     N = phase.shape[0]
     PHASE = numpy.pad(phase,(N//2,N//2),'symmetric')
     NN = N*2
-    del_f = 1./(2.*NN*delta)
+    del_f = 1./(NN*delta)
     spatial_frequency = numpy.fft.fftshift(numpy.fft.fft2(PHASE))
     f = (numpy.arange(NN) - NN/2)*del_f
     fy, fx = numpy.meshgrid(f,f)

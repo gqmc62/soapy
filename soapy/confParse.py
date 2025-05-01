@@ -248,6 +248,7 @@ class PY_Configurator(object):
                                     *normScrnStrengths)**(-3./5.) )
             self.sim.max_diffraction_angle = 2.*max_wavelength*numpy.max([
                 1/self.atmos.r0, (1/scrnStrengths).sum()])
+            # physical coverage, each side ==> 2* ==> c=4 in Schmidt 2009?
             
             # self.sim.max_grid_diffraction_angle = 0
             # for iwfs in range(self.sim.nGS):
@@ -275,11 +276,17 @@ class PY_Configurator(object):
             #               abs(maxSciPOS) + max_sci_fov/2.]) * ASEC2RAD
             self.sim.max_sim_fov = 2*numpy.max([abs(maxGSPos),abs(maxSciPOS)]) * ASEC2RAD
             
+            # self.sim.scrnSize = int(numpy.ceil((
+            #         self.sim.pxlScale * max_height
+            #         * (self.sim.max_sim_fov + 2*self.sim.max_diffraction_angle)
+            #           + self.sim.simSize)
+            #     /2.)*2 + self.wfss[0].pxlsPerSubap)
+            
             self.sim.scrnSize = int(numpy.ceil((
                     self.sim.pxlScale * max_height
                     * (self.sim.max_sim_fov + 2*self.sim.max_diffraction_angle)
-                      + self.sim.simSize)
-                /2.)*2 + self.wfss[0].pxlsPerSubap)
+                      + self.sim.simSize + 2*self.sim.simSize/self.wfss[0].nxSubaps)
+                /2.)*2)
             
             # self.sim.scrnSize = int(numpy.ceil((
             #         self.sim.pxlScale * max_height
@@ -350,7 +357,7 @@ class PY_Configurator(object):
             if dm.nxActuators is None:
                 dm.nxActuators = int(numpy.ceil(
                     dm.diameter/(self.tel.telDiam/self.wfss[0].nxSubaps
-                                 )/2.)*2.
+                                 ))
                     + 1)
                 dm.diameter = (dm.nxActuators - 1)*(self.tel.telDiam/self.wfss[0].nxSubaps)
 
@@ -910,6 +917,7 @@ class WfsConfig(ConfigObj):
                         ("subapThreshold", 0.5),
                         ("lgs", None),
                         ("centThreshold", 0.),
+                        ("globalCentThreshold",0.),
                         ("centMethod", "centre_of_gravity"),
                         ("type", "ShackHartmann"),
                         ("exposureTime", None),

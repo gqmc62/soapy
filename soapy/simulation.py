@@ -603,6 +603,8 @@ class Sim(object):
         self.slopes = self.runWfs(dmShape=self.closed_correction,
                                   loopIter=self.iters)
         
+        self.wfs_intensity = numpy.tile(self.wfss[0].centSubapArrays.sum(-1).sum(-1),2)
+        
         # plt.plot(self.slopes)
         # plt.title('fresh slopes')
         # plt.show()
@@ -631,7 +633,13 @@ class Sim(object):
             print('You shouldnt be here')
         
         if self.run_away == False:
-            if (self.dmCommands > self.command_bound).any():
+            command_dif = numpy.max([(self.dms[1].actGrid[1:]
+                                   - self.dms[1].actGrid[:-1]).flatten(),
+                                  (self.dms[1].actGrid[:,1:]
+                                   - self.dms[1].actGrid[:,:-1]).flatten()])*1e-9/self.config.wfss[0].wavelength*2*numpy.pi
+            command_dif /=  self.config.wfss[0].pxlsPerSubap
+            # print(command_dif)
+            if (command_dif >= numpy.pi).any():
                 self.go = False
                 print('dm strokes too large at {:} iteration.'.format(self.iters))
                 self.run_away = True
@@ -646,8 +654,8 @@ class Sim(object):
         Runs a WFS iteration, reconstructs the phase, runs DMs and finally the science cameras. Also makes some nice output to the console and can add data to the Queue for the GUI if it has been requested. Repeats for nIters.
         """
         
-        self.command_bound = ((0.134*(self.config.tel.telDiam/self.config.atmos.r0)**(5./3.))**0.5
-                              * self.config.wfss[0].wavelength / (2*numpy.pi)) * 5 / 1e-9
+        # self.command_bound = ((0.134*(self.config.tel.telDiam/self.config.atmos.r0)**(5./3.))**0.5
+        #                       * self.config.wfss[0].wavelength / (2*numpy.pi)) * 5 / 1e-9
         self.run_away = False
         self.run_away_iteration = -1
         self.go = True
@@ -750,6 +758,8 @@ class Sim(object):
 
         if self.config.sim.saveSlopes:
             self.allSlopes[:] = 0
+        if self.config.sim.saveWfsIntensity:
+            self.allWfsIntensity[:] = 0
 
         if self.config.sim.saveDmCommands:
             self.allDmCommands[:] = 0
@@ -860,6 +870,12 @@ class Sim(object):
         else:
             self.allSlopes = None
             
+        if self.config.sim.saveWfsIntensity:
+            self.allWfsIntensity = numpy.zeros(
+                    (self.config.sim.nIters, self.config.sim.totalWfsData) )
+        else:
+            self.allWfsIntensity = None
+            
         if self.config.sim.saveAtmSlopes:
             self.allAtmSlopes = numpy.zeros(
                     (self.config.sim.nIters, self.config.sim.totalWfsData) )
@@ -921,6 +937,7 @@ class Sim(object):
         """
         if self.config.sim.saveSlopes:
             self.allSlopes[i] = self.slopes
+            self.allWfsIntensity[i] = self.wfs_intensity
             # plt.plot(self.allSlopes[i])
             # plt.title('saved slopes')
             # plt.show()

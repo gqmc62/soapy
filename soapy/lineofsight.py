@@ -436,8 +436,9 @@ class LineOfSight(object):
             if (test_result == False):
                 print('Propagation Parameter need adjustment for : {}'.format(self.config.type))
             
-            
-            
+            # x = numpy.arange(self.nx_prop_pixels) - self.nx_prop_pixels/2. + 0.5
+            # yy, xx = numpy.meshgrid(x,x)
+            # self.math_tt_correction = numpy.exp(1j*-numpy.pi/self.nx_prop_pixels*(xx+yy))
 
             
             

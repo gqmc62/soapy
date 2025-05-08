@@ -388,6 +388,7 @@ class Reconstructor(object):
         # zero poke case
         
         zero_iMat = numpy.zeros((self.sim_config.totalWfsData))
+        zero_iMat_intensity = numpy.zeros((self.sim_config.totalWfsData),dtype=float)
         zero_wfs_efield = []
         
         # Set vector of iMat commands and phase to 0
@@ -414,7 +415,9 @@ class Reconstructor(object):
                 wfs.config.eReadNoise = 0
             
             zero_iMat[n_wfs_measurments: n_wfs_measurments+wfs.n_measurements] = (
-                    wfs.frame(None, phase_correction=phase, iMatFrame=True))# / dm.dmConfig.iMatValue            
+                    wfs.frame(None, phase_correction=phase, iMatFrame=True))# / (dm.dmConfig.iMatValue     *1e-9 )      
+            zero_iMat_intensity[n_wfs_measurments: n_wfs_measurments+wfs.n_measurements] = (
+                numpy.tile(wfs.centSubapArrays.sum(-1).sum(-1),2))
             if self.soapy_config.recon.analyseAberationCalib:
                 zero_wfs_efield.append(numpy.copy(wfs.interp_efield))
                 # plt.imshow(numpy.angle(zero_wfs_efield[wfs_n]))
@@ -428,6 +431,7 @@ class Reconstructor(object):
         # plt.show()
         
         self.zero_iMat = numpy.copy(zero_iMat)
+        self.zero_iMat_intensity = numpy.copy(zero_iMat_intensity)
         
         # poke each dms
         
@@ -615,7 +619,7 @@ class Reconstructor(object):
             actCommands[:] = 0
 
             # Except the one we want to make an iMat for!
-            actCommands[i] = 1 # dm.dmConfig.iMatValue
+            actCommands[i] = 1#dm.dmConfig.iMatValue
 
             # Now get a DM shape for that command
             phase[:] = 0
@@ -645,132 +649,135 @@ class Reconstructor(object):
                 
                 iMat[i, n_wfs_measurments: n_wfs_measurments+wfs.n_measurements] = -1 * (
                     wfs.frame(scrns=None, phase_correction=phase, iMatFrame=True)
-                    - zero_iMat[n_wfs_measurments: n_wfs_measurments+wfs.n_measurements])# / dm.dmConfig.iMatValue
+                    - zero_iMat[n_wfs_measurments: n_wfs_measurments+wfs.n_measurements])# / (dm.dmConfig.iMatValue)
                 # print(self.soapy_config.recon.analyseAberationCalib,plot,i,FULL_ACTS)
                 if self.soapy_config.recon.analyseAberationCalib:# and DM.config.calibrate == True:
                     
                     if (i == FULL_ACTS).any():
                         # print(first_plot)
-                        if (first_plot == True) and (plot == True) :
-                            first_plot = False
-                            # print(first_plot)
-                            if dm.n_acts == 81:
-                                actCommands = numpy.zeros((81),dtype=float)
-                                actCommands[20] = 1
-                                actCommands[22] = 1
-                                actCommands[24] = 1
-                                actCommands[38] = 1
-                                actCommands[40] = 1
-                                actCommands[42] = 1
-                                actCommands[56] = 1
-                                actCommands[58] = 1
-                                actCommands[60] = 1
-                            elif dm.n_acts == 25:
-                                actCommands = numpy.zeros((25),dtype=float)
-                                actCommands[11] = 1
-                                actCommands[13] = 1
-                            elif dm.n_acts == 49:
-                                actCommands = numpy.zeros((49),dtype=float)
-                                actCommands[10] = 1
-                                actCommands[22] = 1
-                                actCommands[24] = 1
-                                actCommands[26] = 1
-                                actCommands[38] = 1
-                            elif dm.n_acts == 169:
-                                actCommands = numpy.zeros((169),dtype=float)
-                                actCommands[32] = 1
-                                actCommands[56] = 1
-                                actCommands[58] = 1
-                                actCommands[60] = 1
-                                actCommands[80] = 1
-                                actCommands[82] = 1
-                                actCommands[84] = 1
-                                actCommands[86] = 1
-                                actCommands[88] = 1
-                                actCommands[108] = 1
-                                actCommands[110] = 1
-                                actCommands[112] = 1
-                                actCommands[136] = 1
-                            # print(dm.n_acts,actCommands.shape)
-                            phase[dm.n_dm] = dm.dmFrame(actCommands)
-                            for nPhase in range(phase.shape[0]):
-                                plt.imshow(phase[nPhase])
-                                plt.colorbar()
-                                plt.title('DM{:}'.format(nPhase))
-                                plt.show()
-                            wfs.frame(None, phase_correction=phase, iMatFrame=True,iMatFramePlot=True)
+                        # if (first_plot == True) and (plot == True) :
+                        #     first_plot = False
+                        #     # print(first_plot)
+                        #     if dm.n_acts == 81:
+                        #         actCommands = numpy.zeros((81),dtype=float)
+                        #         actCommands[20] = 1
+                        #         actCommands[22] = 1
+                        #         actCommands[24] = 1
+                        #         actCommands[38] = 1
+                        #         actCommands[40] = 1
+                        #         actCommands[42] = 1
+                        #         actCommands[56] = 1
+                        #         actCommands[58] = 1
+                        #         actCommands[60] = 1
+                        #     elif dm.n_acts == 25:
+                        #         actCommands = numpy.zeros((25),dtype=float)
+                        #         actCommands[11] = 1
+                        #         actCommands[13] = 1
+                        #     elif dm.n_acts == 49:
+                        #         actCommands = numpy.zeros((49),dtype=float)
+                        #         actCommands[10] = 1
+                        #         actCommands[22] = 1
+                        #         actCommands[24] = 1
+                        #         actCommands[26] = 1
+                        #         actCommands[38] = 1
+                        #     elif dm.n_acts == 169:
+                        #         actCommands = numpy.zeros((169),dtype=float)
+                        #         actCommands[32] = 1
+                        #         actCommands[56] = 1
+                        #         actCommands[58] = 1
+                        #         actCommands[60] = 1
+                        #         actCommands[80] = 1
+                        #         actCommands[82] = 1
+                        #         actCommands[84] = 1
+                        #         actCommands[86] = 1
+                        #         actCommands[88] = 1
+                        #         actCommands[108] = 1
+                        #         actCommands[110] = 1
+                        #         actCommands[112] = 1
+                        #         actCommands[136] = 1
+                        #     # print(dm.n_acts,actCommands.shape)
+                        #     phase[dm.n_dm] = dm.dmFrame(actCommands)
+                        #     for nPhase in range(phase.shape[0]):
+                        #         plt.imshow(phase[nPhase])
+                        #         plt.colorbar()
+                        #         plt.title('DM{:}'.format(nPhase))
+                        #         plt.show()
+                        #     wfs.frame(None, phase_correction=phase, iMatFrame=True,iMatFramePlot=True)
                             
-                            xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
-                            xx -= xx.max()/2.
-                            xx /= wfs.nx_subap_interp
+                        #     xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
+                        #     xx -= xx.max()/2.
+                        #     xx /= wfs.nx_subap_interp
                             
-                            zero_wfs_efield[wfs_n][wfs.scaledMask == 0] = numpy.nan
-                            # plt.imshow(numpy.asarray(zero_wfs_efield[wfs_n]).real)
-                            # plt.show()
+                        #     zero_wfs_efield[wfs_n][wfs.scaledMask == 0] = numpy.nan
+                        #     # plt.imshow(numpy.asarray(zero_wfs_efield[wfs_n]).real)
+                        #     # plt.show()
                             
-                            wfs.interp_efield[wfs.scaledMask == 0] = numpy.nan
-                            # plt.imshow(wfs.interp_efield.real)
-                            # plt.show()
+                        #     wfs.interp_efield[wfs.scaledMask == 0] = numpy.nan
+                        #     # plt.imshow(wfs.interp_efield.real)
+                        #     # plt.show()
                             
-                            with_aberration_efield = (wfs.interp_efield
-                                                    / numpy.asarray(zero_wfs_efield[wfs_n]))
-                            # plt.imshow(with_aberration_efield.real)
-                            # plt.show()
+                        #     with_aberration_efield = (wfs.interp_efield
+                        #                             / numpy.asarray(zero_wfs_efield[wfs_n]))
+                        #     # plt.imshow(with_aberration_efield.real)
+                        #     # plt.show()
                             
                             
-                            to_plot = numpy.unwrap(numpy.unwrap(numpy.angle(numpy.nan_to_num(with_aberration_efield)),axis=0),axis=1)
-                            to_plot[wfs.scaledMask == 0] = numpy.nan
-                            # to_plot = my_unwrap(numpy.angle(with_aberration_efield))
-                            # plt.imshow(to_plot)
-                            # plt.show()
-                            to_plot -= numpy.nanmedian(to_plot)
-                            fig, ax1 = plt.subplots()
-                            # print(to_plot[64,64])
-                            poke_value = self.soapy_config.dms[1].iMatValue*1e-9 / self.soapy_config.wfss[0].wavelength * 2.0 * numpy.pi
-                            c = ax1.pcolor(xx,xx,
-                                        -to_plot,vmin=0,vmax=poke_value)
+                        #     to_plot = numpy.unwrap(numpy.unwrap(numpy.angle(numpy.nan_to_num(with_aberration_efield)),axis=0),axis=1)
+                        #     to_plot[wfs.scaledMask == 0] = numpy.nan
+                        #     # to_plot = my_unwrap(numpy.angle(with_aberration_efield))
+                        #     # plt.imshow(to_plot)
+                        #     # plt.show()
+                        #     to_plot -= numpy.nanmedian(to_plot)
+                        #     fig, ax1 = plt.subplots()
+                        #     # print(to_plot[64,64])
+                        #     poke_value = self.soapy_config.dms[1].iMatValue*1e-9 / self.soapy_config.wfss[0].wavelength * 2.0 * numpy.pi
+                        #     c = ax1.pcolor(xx,xx,
+                        #                 -to_plot,vmin=0,vmax=poke_value)
                             
-                            ax1.hlines((-4,-3,-2,-1,0,1,2,3,4),xmin=-4,xmax=4,color='w')
-                            ax1.vlines((-4,-3,-2,-1,0,1,2,3,4),ymin=-4,ymax=4,color='w')
-                            # ax1.plot([0,2,-2,0,0,-2,-2,2,2],[0,0,0,2,-2,-2,2,-2,2],color='k',marker='o',ls='')
-                            fig.colorbar(c,ax=ax1)
-                            ax1.axis('square')
+                        #     ax1.hlines((-4,-3,-2,-1,0,1,2,3,4),xmin=-4,xmax=4,color='w')
+                        #     ax1.vlines((-4,-3,-2,-1,0,1,2,3,4),ymin=-4,ymax=4,color='w')
+                        #     # ax1.plot([0,2,-2,0,0,-2,-2,2,2],[0,0,0,2,-2,-2,2,-2,2],color='k',marker='o',ls='')
+                        #     fig.colorbar(c,ax=ax1)
+                        #     ax1.axis('square')
                             
-                            frame1 = ax1
-                            for xlabel_i in frame1.axes.get_xticklabels():
-                                xlabel_i.set_visible(False)
-                                xlabel_i.set_fontsize(0.0)
-                            for xlabel_i in frame1.axes.get_yticklabels():
-                                xlabel_i.set_fontsize(0.0)
-                                xlabel_i.set_visible(False)
+                        #     frame1 = ax1
+                        #     for xlabel_i in frame1.axes.get_xticklabels():
+                        #         xlabel_i.set_visible(False)
+                        #         xlabel_i.set_fontsize(0.0)
+                        #     for xlabel_i in frame1.axes.get_yticklabels():
+                        #         xlabel_i.set_fontsize(0.0)
+                        #         xlabel_i.set_visible(False)
                                 
-                            ax1.tick_params(axis='both', which='both', length=0)
+                        #     ax1.tick_params(axis='both', which='both', length=0)
                             
-                            plt.gcf().set_size_inches(6,6)
+                        #     plt.gcf().set_size_inches(6,6)
                             
-                            plt.title('dm_influence')
-                            plt.savefig('dm_influence-' + time.strftime("%Y-%m-%d-%H-%M-%S") + '.png',
-                                        dpi=300,bbox_inches='tight',transparent=True)
+                        #     plt.title('dm_influence')
+                        #     plt.savefig('dm_influence-' + time.strftime("%Y-%m-%d-%H-%M-%S") + '.png',
+                        #                 dpi=300,bbox_inches='tight',transparent=True)
                         
-                            plt.show()
-                            plt.clf()
-                            # reset things to where they were
-                            actCommands[:] = 0
+                        #     plt.show()
+                        #     plt.clf()
+                        #     # reset things to where they were
+                        #     actCommands[:] = 0
     
-                            # Except the one we want to make an iMat for!
-                            actCommands[i] = 1 # dm.dmConfig.iMatValue
-                            phase[:] = 0
-                            phase[dm.n_dm] = dm.dmFrame(actCommands)
+                        #     # Except the one we want to make an iMat for!
+                        #     actCommands[i] = dm.dmConfig.iMatValue*1e-9
+                        #     phase[:] = 0
+                        #     phase[dm.n_dm] = dm.dmFrame(actCommands)
                             
-                            for DM_N, DM in self.dms.items():
-                                if DM.config.type == 'Aberration':
-                                    if DM.config.calibrate == False:
-                                        phase[DM_N] = DM.dmFrame('flat')
-                                    else:
-                                        phase[DM_N] = DM.dmFrame('shape')
+                        #     for DM_N, DM in self.dms.items():
+                        #         if DM.config.type == 'Aberration':
+                        #             if DM.config.calibrate == False:
+                        #                 phase[DM_N] = DM.dmFrame('flat')
+                        #             else:
+                        #                 phase[DM_N] = DM.dmFrame('shape')
                                         
-                            wfs.frame(None, phase_correction=phase, iMatFrame=True,iMatFramePlot=True)
-                        
+                        #     wfs.frame(None, phase_correction=phase, iMatFrame=True,iMatFramePlot=True)
+                        # if plot == True:
+                        #     plt.imshow(phase.sum(0))
+                        #     plt.colorbar()
+                        #     plt.show()
                         
                         xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
                         xx -= xx.max()/2.
@@ -987,15 +994,22 @@ class Reconstructor(object):
                             low_bound = nxsubap//2*pxlsPerSubap
                             up_bound = (nxsubap//2+1)*pxlsPerSubap
                             
-                            plt.imshow(wfs.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
-                            plt.title('sample wfs subap')
-                            plt.show()
+                            ap = numpy.copy(wfs.wfsDetectorPlane / wfs.wfsDetectorPlane.max())
+                            # ap -= self.soapy_config.wfss[0].centThreshold
+                            # ap[ap < 0] = 0.0
+                            # ap /= ap.max()
                             
-                            plt.imshow(wfs.wfsDetectorPlane)
+                            plt.imshow(ap)
+                            plt.colorbar()
                             plt.title('sample wfs')
                             plt.show()
+                            
+                            subap = numpy.copy(wfs.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
 
-                        
+                            plt.imshow(subap)
+                            plt.colorbar()
+                            plt.title('sample wfs subap')
+                            plt.show()
                     
                 
                 n_wfs_measurments += wfs.n_measurements

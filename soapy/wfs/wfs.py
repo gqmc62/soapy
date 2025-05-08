@@ -508,13 +508,27 @@ class WFS(object):
             low_bound = nxsubap//2*pxlsPerSubap
             up_bound = (nxsubap//2+1)*pxlsPerSubap
             
-            plt.imshow(self.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
-            plt.title('sample wfs subap')
+            # plt.imshow(self.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
+            # plt.title('sample wfs subap')
+            # plt.show()
+            
+            # plt.imshow(self.wfsDetectorPlane/(self.wfsDetectorPlane.max()),vmin=0,vmax=1)
+            # plt.colorbar()
+            # plt.title('wfs detector plane, Strehl={:.2f}, Rytov={:.2f}'.format(strehl,rytov))
+            # plt.show()
+            
+            ap = numpy.copy(self.wfsDetectorPlane / self.wfsDetectorPlane.max())
+            
+            plt.imshow(ap)
+            plt.colorbar()
+            plt.title('sample wfs')
             plt.show()
             
-            plt.imshow(self.wfsDetectorPlane/(self.wfsDetectorPlane.max()),vmin=0,vmax=1)
+            subap = numpy.copy(self.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
+
+            plt.imshow(subap)
             plt.colorbar()
-            plt.title('wfs detector plane, Strehl={:.2f}, Rytov={:.2f}'.format(strehl,rytov))
+            plt.title('sample wfs subap')
             plt.show()
             
             make_quiver_plot(self)

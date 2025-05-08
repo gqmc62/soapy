@@ -12,19 +12,18 @@ Atmosphere:
   - 0
   windSpeeds:
   - 0
-  - 0
   removedTipTiltPiston: True
 DM:
   0:
     altitude: 0
     closed: true
-    gain: 0.4
-    iMatValue: 0.002
+    gain: 0.8
+    iMatValue: 0.003093975
     type: TT
   1:
     altitude: 0
     closed: true
-    gain: 0.4
+    gain: 0.8
     iMatValue: 1
     type: FastPiezo
   2:
@@ -38,7 +37,6 @@ DM:
     subtype: Atmosphere_perfect_DM_no_tip_tilt
     type: Aberration
 Reconstructor:
-  gain: 0.4
   svdConditioning: 0.05
   type: MVM
   analyseAberationCalib: true
@@ -75,6 +73,8 @@ WFS:
     wavelength: 500e-9
     fftwThreads: 8
     fftwFlag: FFTW_MEASURE
+    centThreshold: 0.0
+    globalCentThreshold: 0.0
 loopTime: 0.001
 nDM: 3
 nGS: 1
@@ -92,6 +92,7 @@ saveAtmSlopes: true
 saveSlopes: true
 saveStrehl: true
 saveWfe: true
+saveWfsIntensity: true
 saveRytov: true
 saveWfsFrames: false
 simName: bad_IM_C

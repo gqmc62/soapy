@@ -290,6 +290,7 @@ class PSFCamera(object):
         
         Returns:
              float: RMS WFE across pupil in nm
+             now do intensity weighted wavefront error
         """
         if self.config.propagationMode == "Physical":
             
@@ -306,9 +307,12 @@ class PSFCamera(object):
             residual_field /= piston
             residual_field *= self.pupil_mask
             
-            ms_wfe = numpy.nansum(numpy.square(my_unwrap(numpy.angle(
+            intensity = numpy.abs(residual_field)**2
+            
+            ms_wfe = numpy.nansum(intensity * numpy.square(my_unwrap(numpy.angle(
                 residual_field
-                ))/self.los.phs2Rad*self.pupil_mask)) / numpy.nansum(self.pupil_mask)
+                ))/self.los.phs2Rad*self.pupil_mask)) / numpy.nansum(intensity * self.pupil_mask)
+            
             rms_wfe = numpy.sqrt(ms_wfe)
             # print('a')
             # print(rms_wfe)

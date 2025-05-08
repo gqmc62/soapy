@@ -478,11 +478,16 @@ class ShackHartmann(wfs.WFS):
         numbalib.wfslib.chop_subaps(
                 self.detector, self.detector_cent_coords, self.nx_subap_pixels,
                 self.centSubapArrays)
+        
+        subap_intensity = self.centSubapArrays.sum(-1).sum(-1)
+        subap_intensity /= numpy.median(subap_intensity)
+        subap_mask = (subap_intensity >= self.config.globalCentThreshold)
+        
+        self.centSubapArrays = subap_mask[:,None,None] * self.centSubapArrays
 
         slopes = getattr(centroiders, self.config.centMethod)(
                 self.centSubapArrays,
                 threshold=self.config.centThreshold,
-                min_threshold=self.config.globalCentThreshold*self.centSubapArrays.max(-1).max(-1),
                 ref=self.referenceImage
                 )
 

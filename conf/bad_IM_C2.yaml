@@ -2,7 +2,7 @@ Atmosphere:
   L0:
   - 4
   infinite: true
-  r0: 0.05
+  r0: 0.10
   scrnHeights:
   - 0
   scrnNo: 1
@@ -18,13 +18,13 @@ DM:
     altitude: 0
     closed: true
     gain: 0.8
-    iMatValue: 0.005156625
+    iMatValue: 0.0041253
     type: TT
   1:
     altitude: 0
     closed: true
     gain: 0.8
-    iMatValue: 1
+    iMatValue: 10
     type: FastPiezo
   2:
     L0: 4
@@ -35,7 +35,6 @@ DM:
     nollMode: 45
     r0: 0.05
     subtype: Atmosphere_perfect_DM_no_tip_tilt
-    conjugateLayer: 1
     type: Aberration
 Reconstructor:
   svdConditioning: 0.05
@@ -56,7 +55,7 @@ Science:
 Telescope:
   mask: circle
   obsDiam: 0.0
-  telDiam: 0.4
+  telDiam: 0.2
 WFS:
   0:
     GSHeight: 0
@@ -65,10 +64,10 @@ WFS:
     - 0
     - 0
     fftOversamp: 1
-    nxSubaps: 10
+    nxSubaps: 4
     propagationMode: Physical
     pxlsPerSubap: 18
-    subapFOV: 21
+    subapFOV: 17
     subapThreshold: 0.9
     type: ShackHartmann
     wavelength: 500e-9
@@ -81,7 +80,7 @@ nDM: 3
 nGS: 1
 nIters: 5
 nSci: 1
-pupilSize: 180
+pupilSize: 90
 saveCalib: true
 saveDmCommands: true
 saveInstPsf: false
@@ -96,7 +95,7 @@ saveWfe: true
 saveRytov: true
 saveWfsFrames: false
 saveWfsIntensity: true
-simName: bad_IM_A
+simName: bad_IM_C2
 simOversize : 0
 threads: 8
 verbosity: 0

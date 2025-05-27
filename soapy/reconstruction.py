@@ -20,8 +20,10 @@ import traceback
 import time
 
 import numpy
+
 from matplotlib import pyplot as plt
 from astropy.io import fits
+
 
 from . import logger
 
@@ -1190,6 +1192,7 @@ class MVM(Reconstructor):
         Uses DM object makeIMat methods, then inverts each to create a
         control matrix
         '''
+
         
         
         
@@ -1213,6 +1216,7 @@ class MVM(Reconstructor):
         if self.config.svdConditioning == 'adaptive':
             rcond = get_rcond_adaptive_threshold_rank(self.interaction_matrix)
             self.config.svdConditioning = rcond
+
         logger.info("Invert iMat with conditioning: {:.4f}".format(
                 self.config.svdConditioning))
         self.control_matrix = numpy.linalg.pinv(

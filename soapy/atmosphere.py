@@ -172,6 +172,7 @@ class atmos(object):
 
                 logger.info("Initialise Infinite Phase Screen {}".format(layer+1))
 
+
                 if self.PHYS:
                     phase_screen = InfinitePhaseScreen(
                             self.layer_scrn_sizes[layer], self.pixel_scale, self.scrnStrengths[layer],
@@ -187,6 +188,7 @@ class atmos(object):
                             RMTT=self.config.removedTipTiltPiston, n=self.simConfig.pupilSize)#self._R)
                     for row in range(self.scrn_size):
                         phase_screen.add_row()
+
                 self.infinite_phase_screens.append(phase_screen)
 
         else:

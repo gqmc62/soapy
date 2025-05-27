@@ -66,4 +66,8 @@ target/
 .idea/
 .vscode/
 
+
 *.fits
+*.png
+*.pkl
+.gitignore

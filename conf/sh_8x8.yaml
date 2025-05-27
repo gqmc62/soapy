@@ -1,9 +1,12 @@
+
 simName: sh_8x8
 pupilSize: 100
 nGS: 1
 nDM: 2
 nSci: 1
+
 nIters: 50
+
 loopTime: 0.0025
 threads: 4
 

@@ -83,6 +83,7 @@ import numpy
 import numpy.random
 
 import aotools
+from matplotlib import pyplot as plt
 
 from .. import AOFFT, LGS, logger, lineofsight, interp
 
@@ -156,7 +157,7 @@ class WFS(object):
         self.initFFTs()
         if self.lgsConfig and self.config.lgs:
             self.initLGS()
-
+        # print('i am wfs')
         self.allocDataArrays()
 
         self.calcTiltCorrect()
@@ -191,6 +192,7 @@ class WFS(object):
         pass
 
     def allocDataArrays(self):
+        self.los.allocDataArrays()
         pass
 
     def initLos(self):
@@ -379,7 +381,8 @@ class WFS(object):
             logger.debug('Elong layer: {}'.format(i))
 
             # Add uncorrected phase for plotting
-            self.uncorrectedPhase += self.los[i].phase/self.los[i].phs2Rad
+            # self.uncorrectedPhase += self.los[i].phase/self.los[i].phs2Rad
+            self.uncorrectedPhase += self.los[i].uncorrectedPhase
 
             # Add the effect of the defocus and possibly tilt
             self.los[i].EField *= numpy.exp(1j*self.elongPhaseAdditions[i])
@@ -392,7 +395,7 @@ class WFS(object):
             # Add onto the focal plane with that layers intensity
             self.calcFocalPlane(intensity=self.lgsConfig.naProfile[i], los=self.los[i])
 
-    def frame(self, scrns, phase_correction=None, read=True, iMatFrame=False):
+    def frame(self, scrns, phase_correction=None, read=True, iMatFrame=False, loopIter=None, iMatFramePlot=False):
         '''
         Runs one WFS frame
 
@@ -423,25 +426,28 @@ class WFS(object):
 
         self.zeroData(detector=read, FP=False)
 
-        self.los.frame(scrns)
-
         # If LGS elongation simulated
-        if self.config.lgs and self.elong!=0:
-            self.makeElongationFrame(phase_correction)
-
-        # If no elongation
-        else:
-
-            self.uncorrectedPhase = self.los.phase.copy()/self.los.phs2Rad
-            if phase_correction is not None:
-                self.los.performCorrection(phase_correction)
-                
-                if self.config.lgs and self.config.lgs.precompensated:
+        if self.config.lgs:
+	    # If no elongation
+            if self.elong!=0:
+                self.los.frame(scrns=scrns,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
+                self.makeElongationFrame(phase_correction)
+            else:
+                self.los.frame(scrns=scrns,correction=phase_correction,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
+                self.uncorrectedPhase = self.los.uncorrectedPhase
+                if self.config.lgs.precompensated:
                     self.lgs.precorrection = phase_correction
+                self.calcFocalPlane()
 
+  
+        else:
+            self.los.frame(scrns=scrns,correction=phase_correction,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
+            self.uncorrectedPhase = self.los.uncorrectedPhase
             self.calcFocalPlane()
 
+
         self.integrateDetectorPlane()
+        
         if read:
             self.readDetectorPlane()
             self.calculateSlopes()
@@ -459,6 +465,73 @@ class WFS(object):
         #     self.slopes[:] = 0
         if numpy.any(numpy.isnan(self.slopes)):
             numpy.nan_to_num(self.slopes)
+        
+        if (scrns is not None):
+            plot = True
+        else:
+            plot = False
+        
+        try:
+            if self.soapy_config.wfss[0].plot == False:        
+                plot = False
+        except:
+            plot = False
+            
+        if ((plot == True) 
+            and ((loopIter == 0) 
+                 or (loopIter == (self.soapy_config.sim.nIters - 1)) 
+                 or (iMatFramePlot == True))):
+            plot == True
+        else:
+            plot = False
+        
+        if plot == True:
+            
+            P = self.scaledMask*self.interp_efield
+            Q = self.scaledMask
+            # plt.quiver(P.real,P.imag)
+            # plt.axis('square')
+            # plt.show()
+            # plt.imshow(numpy.abs(P)**2/(numpy.abs(P)**2).mean(),vmin=0,vmax=3)
+            # plt.colorbar()
+            # plt.show()
+            # plt.imshow(numpy.angle(P),vmin=-numpy.pi,vmax=numpy.pi)
+            # plt.colorbar()
+            # plt.show()
+            strehl = (numpy.abs(numpy.sum(P*numpy.conjugate(Q)))**2
+                                / numpy.abs(numpy.sum(P*numpy.conjugate(P)))
+                                / numpy.abs(numpy.sum(Q*numpy.conjugate(Q))))
+            rytov = numpy.var(numpy.log(numpy.abs(P[numpy.asarray(Q,dtype=bool)])))
+            
+            nxsubap = self.soapy_config.wfss[0].nxSubaps
+            pxlsPerSubap = self.soapy_config.wfss[0].pxlsPerSubap
+            low_bound = nxsubap//2*pxlsPerSubap
+            up_bound = (nxsubap//2+1)*pxlsPerSubap
+            
+            # plt.imshow(self.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
+            # plt.title('sample wfs subap')
+            # plt.show()
+            
+            # plt.imshow(self.wfsDetectorPlane/(self.wfsDetectorPlane.max()),vmin=0,vmax=1)
+            # plt.colorbar()
+            # plt.title('wfs detector plane, Strehl={:.2f}, Rytov={:.2f}'.format(strehl,rytov))
+            # plt.show()
+            
+            ap = numpy.copy(self.wfsDetectorPlane / self.wfsDetectorPlane.max())
+            
+            plt.imshow(ap)
+            plt.colorbar()
+            plt.title('sample wfs')
+            plt.show()
+            
+            subap = numpy.copy(self.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
+
+            plt.imshow(subap)
+            plt.colorbar()
+            plt.title('sample wfs subap')
+            plt.show()
+            
+            make_quiver_plot(self)
 
         if read:
             return self.slopes
@@ -562,3 +635,56 @@ class WFS(object):
     @EField.setter
     def EField(self, EField):
         self.los.EField = EField
+        
+
+def make_quiver_plot(wfs):
+    position = wfs.detector_cent_coords
+    N = position.shape[0]
+    
+    step = (position[N//2 + 1,1]
+            - position[N//2,1])
+    position = position // step
+    
+    max_position = position.max()
+    x = numpy.arange(max_position + 1.)
+    x -= max_position/2.
+    yy, xx = numpy.meshgrid(x,x)
+    
+    slopex = wfs.slopes[:N]
+    slopey = wfs.slopes[N:]
+    plt.quiver(xx,-yy,
+               rearrange1(slopex, position).T,
+               rearrange1(-slopey, position).T,
+               scale=5, scale_units='inches')
+    plt.title('SHWFS Slope')
+    plt.axis('square')
+    plt.show()
+    return
+
+def rearrange1(A, position):
+    """
+    rearrange soapy reported wfs value from 1d with skips into 2d
+
+    Parameters
+    ----------
+    A : TYPE
+        DESCRIPTION.
+    position : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    a : TYPE
+        DESCRIPTION.
+
+    """
+    N = position.shape[0]
+    size = numpy.max(position) - numpy.min(position) + 1
+    DIM = position.shape[1]
+    a = numpy.zeros((size,)*DIM, dtype=float)
+    for n in numpy.arange(N):
+        a[tuple(position[n])] = A[n]
+    
+    a[a==0] = numpy.nan
+    
+    return a

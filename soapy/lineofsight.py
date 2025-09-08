@@ -256,6 +256,7 @@ class LineOfSight(object):
             self.out_pixel_scale = self.phase_pixel_scale
         else:
             self.out_pixel_scale = out_pixel_scale
+
         # if (self.config.type == 'PSF'):
         #     print(self.out_pixel_scale)
         # try:
@@ -275,6 +276,7 @@ class LineOfSight(object):
             self.nx_in_pixels = self.nx_out_pixels
         else:
             self.nx_out_pixels = nx_out_pixels
+
             self.nx_in_pixels = nx_out_pixels
             
         if self.config.propagationMode == 'Physical':
@@ -452,6 +454,7 @@ class LineOfSight(object):
         
 
 
+
     def calculate_altitude_coords(self, layer_altitude):
         """
         Calculate the co-ordinates of vertices of fo the meta-pupil at altitude given a guide star
@@ -508,6 +511,7 @@ class LineOfSight(object):
         self.phase = numpy.zeros([self.nx_out_pixels] * 2, dtype=DTYPE)
         self.EField = numpy.ones([self.nx_out_pixels] * 2, dtype=CDTYPE)
         self.residual = numpy.zeros([self.nx_out_pixels] * 2, dtype=DTYPE)
+
         
         self.residual_EField = numpy.copy(self.EField)
         
@@ -611,6 +615,7 @@ class LineOfSight(object):
         self.phase[:] = 0
         self.phase_screens[:] = 0
         self.correction_screens[:] = 0
+
         
         
         if self.config.propagationMode == 'Physical':
@@ -631,7 +636,7 @@ class LineOfSight(object):
             apos (ndarray, optional):  The angular position of the GS in
             radians. If not set, will use the config position
         """
-        
+
         # Check if geometric or physical
         if self.config.propagationMode == "Physical":
             return self.makePhasePhys(radii)
@@ -685,6 +690,7 @@ class LineOfSight(object):
             apos (ndarray, optional):  The angular position of the GS in
             radians. If not set, will use the config position
         '''
+
         
         for i in range(self.scrns.shape[0]):
             numbalib.bilinear_interp(
@@ -735,6 +741,7 @@ class LineOfSight(object):
         return self.EField#,self.EField_buf 
 
 
+
     def performCorrection(self, correction,loopIter=None,iMatFramePlot=False):
         """
         Corrects the aberrated line of sight with some given correction phase
@@ -778,11 +785,11 @@ class LineOfSight(object):
         self.EField /= mean_phase
 
         # Also correct phase in case its required
-        
         self.residual = (self.phase - self.phase_correction) / self.phs2Rad
         self.residual -= self.residual.mean()
 
         self.phase = self.residual * self.phs2Rad
+
         
         if plot == True:
             
@@ -1167,8 +1174,10 @@ class LineOfSight(object):
                 (self.n_dm, self.nx_scrn_size,self.nx_scrn_size))
 
         # If we propagate up, must do correction first!
+
         if (self.propagation_direction == "up"):
             self.performCorrection(correction,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
+
 
         # Now do propagation through atmospheric turbulence
         if (scrns is not None):
@@ -1189,6 +1198,7 @@ class LineOfSight(object):
         else: # If no scrns, just assume no turbulence
             self.scrns = numpy.zeros(
                     (self.n_layers, self.nx_scrn_size, self.nx_scrn_size))
+
             self.EField_buf = numpy.ones([self.nx_prop_pixels] * 2, dtype=CDTYPE)
             if self.prop_mask is not None:
                 self.EField_buf[:] = np.copy(self.EField_buf[:] * self.prop_mask)
@@ -1226,6 +1236,7 @@ def physical_atmosphere_propagation(
             wavelength, output_pixel_scale,
             propagation_direction="up", input_efield=None, max_angle=None,
             Q2=None,FWFFT=None,BWFFT=None):
+
     '''
     Finds total line of sight complex amplitude by propagating light through phase screens
 
@@ -1272,8 +1283,10 @@ def physical_atmosphere_propagation(
         logger.debug("propagate to first phase screen")
         z = abs(scrnAlts[0] - ht)
         z_total += z
+
         
         EFieldBuf[:] = fixedScale_angularSpectrum_FFTW(EFieldBuf,z,Q2,FWFFT,BWFFT)
+
 
     # Go through and propagate between phase screens
     for i in scrnRange:
@@ -1287,6 +1300,10 @@ def physical_atmosphere_propagation(
         # Apply phase to EField
         EFieldBuf *= numpy.exp(1j*phase)
 
+        # Change sign if propagating up
+        # if propagation_direction == 'up':
+        #     phase *= -1
+        # print("Get distance")
         # Get propagation distance for this layer
         if i==(scrnNo-1):
             if ht_final == 0 and propagation_direction == "up":
@@ -1299,6 +1316,7 @@ def physical_atmosphere_propagation(
 
         # Update total distance counter
         z_total += z
+
 
         # Do ASP for last layer to next
         EFieldBuf[:] = fixedScale_angularSpectrum_FFTW(EFieldBuf,z,Q2,FWFFT,BWFFT)
@@ -1319,10 +1337,8 @@ def physical_correction_propagation(
 
     phs2Rad = 2 * numpy.pi / (wavelength * 10 ** 9)
 
-    EFieldBuf = input_efield
-    if input_efield is None:
-        EFieldBuf = numpy.exp(
-                1j*numpy.zeros((nx_output_pixels,) * 2)).astype(CDTYPE)
+
+
 
     ht = 0
     ht_final = 0
@@ -1423,8 +1439,9 @@ def physical_correction_propagation(
         #     plt.show()
 
 
-        phase = correction[i]
-        # print("Got phase")
+
+        # logger.debug("Propagation: {}, {} m. Total: {}".format(i, z, z_total))
+
 
         # Convert phase to radians
         phase *= phs2Rad

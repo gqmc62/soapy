@@ -73,8 +73,6 @@ import shutil
 import importlib
 import threading
 
-from matplotlib import pyplot as plt
-
 import numpy
 #Use pyfits or astropy for fits file handling
 try:
@@ -366,6 +364,7 @@ class Sim(object):
         self.dmCommands = numpy.zeros(self.config.sim.totalActs)
 
         self.Timat += time.time() - t
+
         
         # for idm in numpy.arange(self.config.sim.nDM):
         #     if self.config.dms[idm]['type'] == 'Aberration':
@@ -971,6 +970,7 @@ class Sim(object):
 
             if self.config.sim.saveSciRes:
                 for sci in xrange(self.config.sim.nSci):
+
                     # print('\n')
                     # print(self.sciCams[sci].residual.shape[0])
                     # print('\n')
@@ -990,6 +990,7 @@ class Sim(object):
                             
                     else:
                         self.sciPhase[sci][i] = self.sciCams[sci].residual
+
 
         if self.config.sim.simName!=None:
             if self.config.sim.saveWfsFrames:

@@ -159,6 +159,7 @@ class PSFCamera(object):
         Takes the calculated pupil phase, scales for the correct FOV,
         and uses an FFT to transform to the focal plane.
         '''
+
         
         # If physical propagation, efield should already be the correct
         # size for the Field of View
@@ -173,6 +174,7 @@ class PSFCamera(object):
         
         residual_field /= piston
         residual_field *= self.pupil_mask
+
 
         self.residual = residual_field
         

@@ -168,6 +168,7 @@ class PY_Configurator(object):
         gsPos = []
         for gs in range(self.sim.nGS):
             pos = self.wfss[gs].GSPosition.astype('float')
+
             # Need to add bit if the GS is an elongated off-axis LGS
             if (hasattr(self.wfss[gs].lgs, 'elongationDepth')
                     and self.wfss[gs].lgs.elongationDepth != 0):
@@ -348,6 +349,7 @@ class PY_Configurator(object):
         for dm in self.dms:
             if dm.diameter is None:
                 dm.diameter = self.tel.telDiam
+
                 if PHYSICAL == True:
                     dm.diameter += ((2.*self.sim.max_diffraction_angle
                                         + self.sim.max_sim_fov) * dm.altitude)
@@ -360,6 +362,7 @@ class PY_Configurator(object):
                                  ))
                     + 1)
                 dm.diameter = (dm.nxActuators - 1)*(self.tel.telDiam/self.wfss[0].nxSubaps)
+
 
 
     def __iter__(self):
@@ -693,6 +696,7 @@ class SimConfig(ConfigObj):
                             'max_diffraction_angle',
                             'max_height',
                             'max_sim_fov',
+
                     ]
 
 

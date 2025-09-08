@@ -615,6 +615,8 @@ class Reconstructor(object):
         
         for i in range(dm.n_acts):
             
+            
+            
             # Set vector of iMat commands and phase to 0
             actCommands[:] = 0
 
@@ -643,7 +645,36 @@ class Reconstructor(object):
                     wfs_rnoise = wfs.config.eReadNoise
                     wfs.config.eReadNoise = 0
                 
-                plot = self.soapy_config.wfss[0].plot
+                # plot = self.soapy_config.wfss[0].plot
+                if self.soapy_config.wfss[0].plot == True:
+                    if dm.n_acts == 121:
+                        if i == 60:
+                            plot = True
+                            self.soapy_config.wfss[0].plot = False
+                        else:
+                            plot = False
+                    elif dm.n_acts == 81:
+                        if i == 40:
+                            plot = True
+                            self.soapy_config.wfss[0].plot = False
+                        else:
+                            plot = False
+                    elif dm.n_acts == 49:
+                        if i == 24:
+                            plot = True
+                            self.soapy_config.wfss[0].plot = False
+                        else:
+                            plot = False
+                    elif dm.n_acts == 25:
+                        if i == 12:
+                            plot = True
+                            self.soapy_config.wfss[0].plot = False
+                        else:
+                            plot = False
+                    else:
+                        plot = False
+                else:
+                    plot = False
                 
                 
                 
@@ -736,7 +767,7 @@ class Reconstructor(object):
                             
                         #     ax1.hlines((-4,-3,-2,-1,0,1,2,3,4),xmin=-4,xmax=4,color='w')
                         #     ax1.vlines((-4,-3,-2,-1,0,1,2,3,4),ymin=-4,ymax=4,color='w')
-                        #     # ax1.plot([0,2,-2,0,0,-2,-2,2,2],[0,0,0,2,-2,-2,2,-2,2],color='k',marker='o',ls='')
+                        #     # ax1.plot([0,2,-2,0,0,-2,-2,2,2],[0,0,0,2,-2,-2,2,-2,2],color='white',marker='o',ls='')
                         #     fig.colorbar(c,ax=ax1)
                         #     ax1.axis('square')
                             
@@ -823,23 +854,46 @@ class Reconstructor(object):
                         #     # dm.subapShiftv2[i,wfs_n,0] = max_shift_x
                         #     # dm.subapShiftv2[i,wfs_n,1] = max_shift_y
                             
+                        #     MEDIAN = numpy.nanmedian(no_aberration)
+                        #     MAX = numpy.nanmax(no_aberration)
+                        #     no_aberration -= MEDIAN
+                        #     no_aberration /= MAX
+                        #     with_aberration -= -MEDIAN
+                        #     with_aberration /= MAX
+
+                        #     plt.imshow(no_aberration)
+                        #     plt.colorbar()
+                        #     plt.show()              
+                        #     plt.imshow(with_aberration)
+                        #     plt.colorbar()
+                        #     plt.show()       
+                            
                         #     MAX = numpy.nanmax(-no_aberration)
                         #     MIN = numpy.nanmin(-no_aberration)
-                        #     plt.pcolor(xx,xx,numpy.angle(with_aberration_efield.T))
-                        #     plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        #     plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     import time
+                        #     s = time.gmtime(time.time())
+                        #     time_stamp = time.strftime("%H-%M-%S", s)
+                        #     # plt.figure(figsize=(6,4))
+                        #     # plt.pcolor(xx,xx,numpy.angle(with_aberration_efield.T))
+                        #     # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                        #     # plt.axis('square')
+                        #     # plt.colorbar()
+                        #     # plt.title('with aberration efield')
+                        #     # plt.savefig(time_stamp + 'influ-with-ab{:d}.pdf'.format(i),dpi=600,bbox_inches='tight')
+                        #     # plt.show()
+                        #     mask = numpy.copy(numpy.asarray(wfs.scaledMask,dtype=float))
+                        #     mask[mask==0] = numpy.nan
+                        #     plt.figure(figsize=(6,4))
+                        #     plt.pcolor(xx,xx,-with_aberration*mask,vmin=0,vmax=1)
+                        #     plt.hlines(numpy.arange(-5,6),-5,5,ls=':',color='r')
+                        #     plt.vlines(numpy.arange(-5,6),-5,5,ls=':',color='r')
+                        #     plt.plot(no_aberration_phase_max_y,no_aberration_phase_max_x,marker='o',color='tab:pink',label='true location',markersize=10)
+                        #     plt.plot(with_aberration_phase_max_y,with_aberration_phase_max_x,marker='X',color='tab:red',label='apparent position : influence',markersize=10)
                         #     plt.axis('square')
+                        #     # plt.title('with aberration')
                         #     plt.colorbar()
-                        #     plt.title('with aberration efield')
-                        #     plt.show()
-                        #     plt.pcolor(xx,xx,with_aberration.T)
-                        #     plt.plot(with_aberration_phase_max_x,with_aberration_phase_max_y,marker='o',color='r')
-                        #     plt.plot(no_aberration_phase_max_x,no_aberration_phase_max_y,marker='^',color='k')
-                        #     plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        #     plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        #     plt.axis('square')
-                        #     plt.title('with aberration')
-                        #     plt.colorbar()
+                        #     plt.savefig(time_stamp + 'influ-with-ab{:d}.pdf'.format(i),dpi=600,bbox_inches='tight')
                         #     plt.show()
                         
                         size_A = with_aberration.shape[0]
@@ -906,7 +960,7 @@ class Reconstructor(object):
                         #     plt.pcolor(x,x,corr.T)#,vmin=0,vmax=1000)
                         #     plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
                         #     plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                        #     plt.plot(true_locx,true_locy,ls='',marker='o',color='k',label='true max')
+                        #     plt.plot(true_locx,true_locy,ls='',marker='o',color='white',label='true max')
                         #     plt.legend()
                         #     plt.colorbar()
                         #     plt.axis('square')
@@ -928,24 +982,47 @@ class Reconstructor(object):
                             xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
                             xx -= xx.max()/2.
                             xx /= wfs.nx_subap_interp
-                            no_aberration -= numpy.nanmean(no_aberration)
-                            MAX = numpy.nanmax(-no_aberration)#0.006#
-                            MIN = numpy.nanmin(-no_aberration)#-0.006#
+                            center = numpy.nanmedian(no_aberration)
+                            with_aberration += center
+                            no_aberration -= center
+                            MAX = numpy.nanmax(no_aberration)#0.006#
+                            MIN = numpy.nanmin(no_aberration)#-0.006#
                             # plt.imshow(with_aberration);plt.show()
-                            with_aberration -= numpy.nanmedian(with_aberration)
-                            plt.pcolor(xx,xx,with_aberration,vmin=MIN,vmax=MAX)
-                            plt.plot(POS[1],POS[0],ls='',marker='o',color='tab:pink',label='true location',markeredgecolor='white')
+                            
+                            
+                            plt.figure(figsize=(6,4))
+                            plt.pcolor(xx,xx,-with_aberration/MAX,vmin=MIN/MAX,vmax=1,cmap='viridis_r')
+                            plt.axis('square')
+                            plt.colorbar()
+                            # plt.hlines(numpy.arange(-5,6),-5,5,ls=':',color='r')
+                            # plt.vlines(numpy.arange(-5,6),-5,5,ls=':',color='r')
+                            plt.plot(POS[1],POS[0],ls='',marker='.',color='white',label='true location',markersize=10)
                             # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
                             # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
-                            plt.plot(true_locy+POS[1],true_locx + POS[0],ls='',marker='X',color='r',markeredgecolor='white',label='apparent position : influence')
-                            # plt.plot(POS[1],POS[0],ls='',marker='^',color='k',label='original max')
+                            plt.plot(true_locy+POS[1],true_locx + POS[0],ls='',marker='.',color='tab:orange',label='apparent position : influence',markersize=10)
+                            import time
+                            s = time.gmtime(time.time())
+                            time_stamp = time.strftime("%H-%M-%S", s)
+                            plt.savefig(time_stamp + 'im-influ{:d}.png'.format(i),bbox_inches='tight',dpi=600)
+                            plt.show()
+                            
+                            plt.figure(figsize=(6,4))
+                            plt.pcolor(xx,xx,-with_aberration/MAX,vmin=MIN/MAX,vmax=1,cmap='viridis_r')
+                            plt.axis('square')
+                            plt.colorbar()
+                            # plt.hlines(numpy.arange(-5,6),-5,5,ls=':',color='r')
+                            # plt.vlines(numpy.arange(-5,6),-5,5,ls=':',color='r')
+                            plt.plot(POS[1],POS[0],ls='',marker='.',color='white',label='true location',markersize=10)
+                            # plt.hlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                            # plt.vlines(numpy.arange(-4,5),-4,4,ls=':',color='r')
+                            # plt.plot(POS[1],POS[0],ls='',marker='^',color='white',label='original max')
                             # plt.title('real interaction'
                             #           + '\nact_original at ({:.2f},{:.2f})'.format(POS[0],POS[1])
                             #           + '\nact_actual at ({:.2f},{:.2f})'.format(true_locx+POS[0],true_locy+POS[1])
                             #           + '\nshift = ({:.2f},{:.2f})'.format(true_locx,true_locy))
-                            plt.axis('square')
+                            # plt.axis('square')
                             # plt.legend()
-                            plt.colorbar()
+                            # plt.colorbar()
                             # plt.xlim(-position.max()/2-1,position.max()/2+1)
                             # plt.ylim(-position.max()/2-1,position.max()/2+1)
                             # plt.savefig('im{:d}.png'.format(i))
@@ -958,12 +1035,15 @@ class Reconstructor(object):
                             #     iMat[i, n_wfs_measurments: n_wfs_measurments+wfs.n_measurements],
                             #     position,DM_POS_TEMP[numpy.where(ACT_LIST == i),:],0.5))
                             
+                            
                             dm.subapShift_slope[i,wfs_n] = measure_AS_from_poke(
                                 iMat[i, n_wfs_measurments: n_wfs_measurments+wfs.n_measurements],
                                 position,DM_POS_TEMP[numpy.where(ACT_LIST == i),:],0.25,debug=plot)
                         
                         
                         if (plot == True):# and (i == 40):
+                            plt.plot(true_locy+POS[1],true_locx + POS[0],ls='',marker='.',color='tab:orange',label='apparent position : influence',markersize=10)
+                            
                             # POS = dm.valid_act_coords[i] - dm.valid_act_coords.max()//2
                             # xx = numpy.arange(numpy.array(zero_wfs_efield[wfs_n]).shape[0],dtype=float)
                             # xx -= xx.max()/2.
@@ -983,10 +1063,16 @@ class Reconstructor(object):
                             # plt.axis('square')
                             # plt.legend()
                             # plt.colorbar()
-                            plt.xlim(-position.max()/2-0.5,position.max()/2+0.5)
-                            plt.ylim(-position.max()/2-0.5,position.max()/2+0.5)
-                            plt.legend()
-                            plt.savefig('im{:d}.png'.format(i))
+                            # plt.xlim(-position.max()/2-0.5,position.max()/2+0.5)
+                            # plt.ylim(-position.max()/2-0.5,position.max()/2+0.5)
+                            # plt.legend()
+                            
+                            # plt.axis('square')
+                            # plt.colorbar()
+                            import time
+                            s = time.gmtime(time.time())
+                            time_stamp = time.strftime("%H-%M-%S", s)
+                            plt.savefig(time_stamp + 'im{:d}.png'.format(i),bbox_inches='tight',dpi=600)
                             plt.show()
                             
                             nxsubap = wfs.soapy_config.wfss[0].nxSubaps
@@ -1001,14 +1087,14 @@ class Reconstructor(object):
                             
                             plt.imshow(ap)
                             plt.colorbar()
-                            plt.title('sample wfs')
+                            # plt.title('sample wfs')
                             plt.show()
                             
                             subap = numpy.copy(wfs.wfsDetectorPlane[low_bound:up_bound,low_bound:up_bound])
 
                             plt.imshow(subap)
                             plt.colorbar()
-                            plt.title('sample wfs subap')
+                            # plt.title('sample wfs subap')
                             plt.show()
                     
                 
@@ -1882,7 +1968,7 @@ def make_quiver_plot(position, slopes):
                rearrange1(slopex, position).T,
                rearrange1(-slopey, position).T,
                scale=5, scale_units='inches')
-    plt.title('IM Slope')
+    # plt.title('IM Slope')
     plt.axis('square')
     plt.show()
     return
@@ -2041,8 +2127,8 @@ def measure_AS_from_IM(IM,SHWFS_position,ACT_list,ACT_position,threshold, debug=
         # axes[0].set_title('x_slope')
         # axes[1].set_title('y_slope')
         # cbar_ax = fig.add_axes([1,0.17,0.05,0.65])
-        # axes[0].plot(DM_POS[act,0],DM_POS[act,1],marker='o',color='k')
-        # axes[1].plot(DM_POS[act,0],DM_POS[act,1],marker='o',color='k')
+        # axes[0].plot(DM_POS[act,0],DM_POS[act,1],marker='o',color='white')
+        # axes[1].plot(DM_POS[act,0],DM_POS[act,1],marker='o',color='white')
         # fig.colorbar(CS,cax=cbar_ax)
         # fig.suptitle('act#{}'.format(act))
         # plt.show()
@@ -2058,7 +2144,7 @@ def measure_AS_from_IM(IM,SHWFS_position,ACT_list,ACT_position,threshold, debug=
         WFS_MAP_X[WFS_MAP < threshold] = numpy.nan
         WFS_MAP_Y[WFS_MAP < threshold] = numpy.nan
         
-        MAX4 = numpy.sort(WFS_MAP[~numpy.isnan(WFS_MAP)].flatten())#[-4:]
+        MAX4 = numpy.sort(WFS_MAP[~numpy.isnan(WFS_MAP)].flatten())[-4:]
         
         WFS_MAP_X_MAX4 = numpy.zeros_like(WFS_MAP)
         WFS_MAP_Y_MAX4 = numpy.zeros_like(WFS_MAP)
@@ -2150,8 +2236,8 @@ def measure_AS_from_IM(IM,SHWFS_position,ACT_list,ACT_position,threshold, debug=
                         #     +'\n{}{}'.format(i,j))
                         # plt.show()
                     size = ((WFS_MAP_X[tuple(MAX4_POS[i])]**2
-                             + WFS_MAP_X[tuple(MAX4_POS[j])]**2)**0.5
-                            * (WFS_MAP_Y[tuple(MAX4_POS[i])]**2
+                             + WFS_MAP_Y[tuple(MAX4_POS[i])]**2)**0.5
+                            * (WFS_MAP_X[tuple(MAX4_POS[j])]**2
                                + WFS_MAP_Y[tuple(MAX4_POS[j])]**2)**0.5)
                     trustability[i,j] = size#**2
         
@@ -2211,7 +2297,7 @@ def measure_AS_from_poke(slope,SHWFS_position,ACT_position,threshold,debug=False
     WFS_MAP_X[WFS_MAP < threshold] = numpy.nan
     WFS_MAP_Y[WFS_MAP < threshold] = numpy.nan
     
-    MAX4 = numpy.sort(WFS_MAP[~numpy.isnan(WFS_MAP)].flatten())#[-4:]
+    MAX4 = numpy.sort(WFS_MAP[~numpy.isnan(WFS_MAP)].flatten())[-4:]
     
     WFS_MAP_X_MAX4 = numpy.zeros_like(WFS_MAP)
     WFS_MAP_Y_MAX4 = numpy.zeros_like(WFS_MAP)
@@ -2235,7 +2321,7 @@ def measure_AS_from_poke(slope,SHWFS_position,ACT_position,threshold,debug=False
         
     if debug:
         plt.quiver(WFS_GRID_X - recenter,WFS_GRID_Y - recenter,
-                   WFS_MAP_X,WFS_MAP_Y,scale=5,color='k')#
+                   WFS_MAP_X,WFS_MAP_Y,scale=5,color='k',headwidth=5,width=0.01)#
         
         x_standard = numpy.linspace(WFS_GRID.min(),WFS_GRID.max())
         x = numpy.zeros((MAX4.shape[0],x_standard.shape[0]))
@@ -2287,12 +2373,12 @@ def measure_AS_from_poke(slope,SHWFS_position,ACT_position,threshold,debug=False
                 
             else:
                 if debug:
-                    # plt.plot(cross[i,j,0] - recenter,cross[i,j,1] - recenter,marker='s',color='tab:orange')
+                    # plt.plot(cross[i,j,0] - recenter,cross[i,j,1] - recenter,marker='s',color='tab:orange',label='cross spots',markersize=5)
                     
                     # plt.plot(y[i] - recenter,x[i] - recenter,ls=':',color='b',marker='')
                     # plt.plot(y[j] - recenter,x[j] - recenter,ls=':',color='b',marker='')
                     plt.quiver(WFS_GRID_X - recenter,WFS_GRID_Y - recenter,
-                               WFS_MAP_X_MAX4,WFS_MAP_Y_MAX4,scale=5,color='tab:orange')
+                               WFS_MAP_X_MAX4,WFS_MAP_Y_MAX4,scale=5,color='tab:red',headwidth=5,width=0.01)
                     # print(DM_POS)
                     
                     # plt.show()
@@ -2305,8 +2391,8 @@ def measure_AS_from_poke(slope,SHWFS_position,ACT_position,threshold,debug=False
                     #     +'\n{}{}'.format(i,j))
                     # plt.show()
                 size = ((WFS_MAP_X[tuple(MAX4_POS[i])]**2
-                         + WFS_MAP_X[tuple(MAX4_POS[j])]**2)**0.5
-                        * (WFS_MAP_Y[tuple(MAX4_POS[i])]**2
+                         + WFS_MAP_Y[tuple(MAX4_POS[i])]**2)**0.5
+                        * (WFS_MAP_X[tuple(MAX4_POS[j])]**2
                            + WFS_MAP_Y[tuple(MAX4_POS[j])]**2)**0.5)
                 trustability[i,j] = size#**2
     
@@ -2315,9 +2401,9 @@ def measure_AS_from_poke(slope,SHWFS_position,ACT_position,threshold,debug=False
     
     CEN = [cen_x - DM_POS[0], cen_y - DM_POS[1]]
     if debug:
-        plt.plot(cen_x - recenter,cen_y - recenter,marker='P',color='tab:orange',ls='',label='apparent position : slope',markeredgecolor='white')
-        # plt.plot(DM_POS[0] - recenter,DM_POS[1] - recenter,color='k',marker='o',label='actuator true location')
-        plt.axis('square')
+        plt.plot(cen_x - recenter,cen_y - recenter,marker='.',color='tab:red',ls='',label='apparent position : slope',markersize=10)
+        # plt.plot(DM_POS[0] - recenter,DM_POS[1] - recenter,color='white',marker='o',label='actuator true location')
+        # plt.axis('square')
         # plt.xlim(-0.5 - recenter,7.5 - recenter)
         # plt.ylim(-0.5 - recenter,7.5 - recenter)
         # plt.title(name_list[i_aber_z_list] + '\n'

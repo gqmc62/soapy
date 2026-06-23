@@ -1,4 +1,4 @@
-simName: HOGSv1
+simName: HOGS-v1-TTZernike
 pupilSize: 152
 nGS: 1
 nDM: 2
@@ -49,16 +49,15 @@ DM:
     closed: True
     iMatValue: 0.5
 
-
   1:
-    type: FastPiezo
+    type: Zernike
     closed: True
-    nxActuators: 20
-    iMatValue: 250
+    nxActuators: 209
+    iMatValue: 20
 
 Reconstructor:
   type: MVM
-  svdConditioning: 0.02
+  svdConditioning: 0.05
   gain: 0.5
 
 Science:

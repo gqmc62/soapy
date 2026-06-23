@@ -1,4 +1,4 @@
-simName:
+simName: HOGS-v1-TTFastPiezo
 pupilSize: 152
 nGS: 1
 nDM: 2
@@ -22,7 +22,7 @@ Atmosphere:
   scrnStrengths: [0.5, 0.3, 0.1, 0.1]
   windDirs: [0, 45, 90, 135]
   windSpeeds: [10, 10, 15, 20]
-  r0: 0.1
+  r0: 0.04
   L0: [20, 20, 20, 20]
   infinite: True
 
@@ -49,7 +49,6 @@ DM:
     closed: True
     iMatValue: 0.5
 
-
   1:
     type: FastPiezo
     closed: True
@@ -58,7 +57,7 @@ DM:
 
 Reconstructor:
   type: MVM
-  svdConditioning: 0.05
+  svdConditioning: 0.02
   gain: 0.5
 
 Science:

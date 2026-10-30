@@ -81,7 +81,7 @@ The Final ``calculateSlopes`` method must set ``self.slopes`` to be the measurem
 
 import numpy
 import numpy.random
-
+from matplotlib import pyplot as plt
 import aotools
 
 from .. import AOFFT, LGS, logger, lineofsight, interp
@@ -410,7 +410,6 @@ class WFS(object):
         Returns:
             ndarray: WFS Measurements
         '''
-
        #If iMatFrame, turn off unwanted effects
         if iMatFrame:
             self.iMat = True
@@ -438,7 +437,6 @@ class WFS(object):
                 
                 if self.config.lgs and self.config.lgs.precompensated:
                     self.lgs.precorrection = phase_correction
-
             self.calcFocalPlane()
 
         self.integrateDetectorPlane()

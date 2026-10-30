@@ -23,6 +23,7 @@ from aotools.image_processing import centroiders
 from .. import LGS, logger, lineofsight, AOFFT, interp
 from . import wfs
 from .. import numbalib
+from matplotlib import pyplot as plt
 
 # xrange now just "range" in python3.
 # Following code means fastest implementation used in 2 and 3
@@ -332,7 +333,7 @@ class ShackHartmann(wfs.WFS):
 
         else:
             self.interp_efield[:] = interp.zoom(los.EField, self.nx_interp_efield)
-
+            
         # Create an array of individual subap EFields
         self.fft_input_data[:] = 0
         numbalib.wfslib.chop_subaps_mask(

@@ -181,9 +181,7 @@ class Sim(object):
         # Init Pupil Mask
         logger.info("Creating mask...")
         self.mask = make_mask(self.config)
-
         self.atmos = atmosphere.atmos(self.config)
-
         # Find if WFSs should each have own process
         if self.config.sim.wfsMP:
             logger.info("Setting fftwThreads to 1 as WFS MP")

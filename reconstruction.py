@@ -39,6 +39,8 @@ try:
 except NameError:
     xrange = range
 
+from matplotlib import pyplot as plt
+
 class Reconstructor(object):
     """
     Reconstructor that will give DM commands required to correct an AO frame for a given set of WFS measurements
@@ -246,9 +248,7 @@ class Reconstructor(object):
         self.interaction_matrix = imat_data
 
     def makeIMat(self, callback=None):
-
         self.interaction_matrix = numpy.zeros((self.sim_config.totalActs, self.sim_config.totalWfsData))
-
         n_acts = 0
         dm_imats = []
         total_valid_actuators = 0

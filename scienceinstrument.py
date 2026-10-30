@@ -211,7 +211,8 @@ class PSFCamera(object):
             # size for the Field of View
             self.EField_fov = self.los.EField[
                     self.fov_sim_pad: -self.fov_sim_pad,
-                    self.fov_sim_pad: -self.fov_sim_pad] # crop 
+                    self.fov_sim_pad: -self.fov_sim_pad] # crop
+            self.residual = self.los.residual.copy()
 
         else:
             # If geo prop...

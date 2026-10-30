@@ -26,6 +26,7 @@ Examples::
 import numpy
 
 from aotools import opticalpropagation
+from matplotlib import pyplot as plt
 import copy 
 
 from . import logger, interp
@@ -320,7 +321,7 @@ class LineOfSight(object):
             self.wavelength, self.out_pixel_scale,
             propagation_direction=self.propagation_direction,
             input_efield=self.EField)
-
+        self.phase = numpy.angle(self.EField)
         return self.EField
 
 
@@ -336,6 +337,14 @@ class LineOfSight(object):
                 correction[i], self.dm_metapupil_coords[i, 0], self.dm_metapupil_coords[i, 1],
                 self.correction_screens[i], bounds_check=False)
 
+        # Check if geometric or physical
+        if self.config.propagationMode == "Physical":
+            return self.performCorrectionPhys()
+        else:
+            return self.performCorrectionGeometric()
+        
+    def performCorrectionGeometric(self):
+
         self.correction_screens.sum(0, out=self.phase_correction)
 
         self.phase_correction *= self.phs2Rad
@@ -347,6 +356,17 @@ class LineOfSight(object):
 
         self.phase = self.residual * self.phs2Rad
 
+    def performCorrectionPhys(self):
+        self.performCorrectionGeometric()
+        return
+        self.EField[:] = physical_correction_propagation(
+            self.correction_screens, self.outMask, self.dm_altitudes,
+            self.wavelength, self.out_pixel_scale,
+            propagation_direction=self.propagation_direction,
+            input_efield=self.EField)
+        self.residual = numpy.angle(self.EField)
+        self.phase = self.residual * self.phs2Rad
+        
 
     def frame(self, scrns=None, correction=None):
         '''
@@ -382,7 +402,7 @@ class LineOfSight(object):
                     (self.n_layers, self.nx_scrn_size, self.nx_scrn_size))
 
         self.makePhase(self.radii)
-
+        
 
         self.residual = self.phase
         # If propagating down, do correction last
@@ -471,6 +491,99 @@ def physical_atmosphere_propagation(
                 z = abs(ht_final - ht) - z_total
         else:
             z = abs(scrnAlts[i+1] - scrnAlts[i])
+
+        # Update total distance counter
+        z_total += z
+
+        # print("Make EField")
+
+
+        # Do ASP for last layer to next
+        EFieldBuf[:] = opticalpropagation.angularSpectrum(
+                    EFieldBuf, wavelength,
+                    output_pixel_scale, output_pixel_scale, z)
+
+        # logger.debug("Propagation: {}, {} m. Total: {}".format(i, z, z_total))
+
+    return EFieldBuf
+
+def physical_correction_propagation(
+        correction_screens, output_mask, dm_altitudes, wavelength, output_pixel_scale,
+    propagation_direction="up", input_efield=None):
+    '''
+    Finds total line of sight complex amplitude by propagating light through deformable mirrors
+
+    Starting and end point is at the telescope pupil and its conjugate.
+    
+    Correction order for 'down' is the first to last in the list
+                         'up'   is the last to first
+
+    Parameters:
+        
+    '''
+
+    scrnNo = len(correction_screens)
+    z_total = 0
+    scrnRange = range(0, scrnNo)
+
+    nx_output_pixels = correction_screens[0].shape[0]
+
+    phs2Rad = 2 * numpy.pi / (wavelength * 10 ** 9)
+
+    EFieldBuf = input_efield
+    if input_efield is None:
+        EFieldBuf = numpy.exp(
+                1j*numpy.zeros((nx_output_pixels,) * 2)).astype(CDTYPE)
+
+    # Get initial up/down dependent params
+    if propagation_direction == "up":
+        ht = 0
+        ht_final = 0
+        scrnAlts = dm_altitudes[::-1]
+        phase_screens = correction_screens[::-1]
+        # If propagating up from telescope, apply mask to the EField
+        EFieldBuf *= output_mask
+        logger.debug("Create EField Buf of zero phase")
+
+    else:
+        ht = 0
+        ht_final = 0
+        scrnAlts = dm_altitudes
+        phase_screens = phase_screens
+        EFieldBuf *= output_mask
+        EFieldBuf *= input_efield
+        logger.debug("Create EField Buf of mask")
+
+    # Propagate to first phase screen (if not already there)
+    if ht!=scrnAlts[0]:
+        logger.debug("propagate to first phase screen")
+        z = scrnAlts[0] - ht
+        z_total += z
+        EFieldBuf[:] = opticalpropagation.angularSpectrum(
+                    EFieldBuf, wavelength,
+                    output_pixel_scale, output_pixel_scale, z)
+
+    # Go through and propagate between phase screens
+    for i in scrnRange:
+
+        phase = phase_screens[i]
+        # print("Got phase")
+
+        # Convert phase to radians
+        phase *= phs2Rad
+
+        # Apply phase to EField
+        EFieldBuf *= numpy.exp(1j*phase)
+
+        # Change sign if propagating up
+        # if propagation_direction == 'up':
+        #     phase *= -1
+        # print("Get distance")
+        # Get propagation distance for this layer
+        if i == (scrnNo-1):
+            z = (ht_final - ht) - z_total
+        else:
+            z = (scrnAlts[i+1] - scrnAlts[i])
 
         # Update total distance counter
         z_total += z

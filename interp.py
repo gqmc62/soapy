@@ -40,6 +40,7 @@ def zoom(array, newSize, order=3):
                 array.imag,
                 kx=order, ky=order
         )
+        return realInterpObj(coordsY,coordsX) + 1j*imagInterpObj(coordsY,coordsX)
     else:
 
         interpObj = RectBivariateSpline(

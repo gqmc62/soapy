@@ -56,7 +56,7 @@ import scipy.fftpack as fft
 import scipy.interpolate
 
 from . import AOFFT, logger, numbalib
-from aotools.turbulence import infinitephasescreen, phasescreen
+from aotools.turbulence import infinitephasescreen, phasescreen, isoplanaticAngle, rytov_variance, r0_to_cn2
 # Use either pyfits or astropy for fits file handling
 try:
     from astropy.io import fits
@@ -70,6 +70,8 @@ try:
     xrange
 except NameError:
     xrange = range
+    
+RAD2ARCSEC = (360*3600)/(2*numpy.pi)
 
 class atmos(object):
     '''
@@ -100,6 +102,12 @@ class atmos(object):
         self.r0 = self.config.r0
         self.L0s = self.config.L0
         self.looptime = self.simConfig.loopTime
+        self.zeta = numpy.radians(self.config.zeta)
+        
+        self.r0 = self.r0*(1/numpy.cos(self.zeta))**(-3/5)
+        self.config.scrnHeights = self.config.scrnHeights / numpy.cos(self.zeta)
+        self.windSpeeds = self.windSpeeds * numpy.cos(self.zeta)
+        self.L0s = self.L0s * numpy.cos(self.zeta)
 
         self._R = None
         if self.config.randomSeed is not None:
@@ -118,23 +126,34 @@ class atmos(object):
                                 *self.config.normScrnStrengths)**(-3./5.) )
 
         # Computes tau0, the AO time constant (Roddier 1981), at current wind speed
-        vBar53 = (self.windSpeeds[:self.scrnNo]**(5./3.) * self.config.normScrnStrengths[:self.scrnNo]).sum() ** (3./5.)
-        tau0 = 0.314 * self.r0 / vBar53
+        self.vBar53 = (self.windSpeeds[:self.scrnNo]**(5./3.) * self.config.normScrnStrengths[:self.scrnNo]).sum() ** (3./5.)
+        self.tau0 = 0.314 * self.r0 / self.vBar53
 
         # If tau0 specified
         if self.config.tau0:
-            print("Scaling wind speeds for tau0 from {0:.2f} ms to requested {1:.2f} ms...".format(tau0*1e3, self.config.tau0*1e3))
+            print("Scaling wind speeds for tau0 from {0:.2f} ms to requested {1:.2f} ms...".format(self.tau0*1e3, self.config.tau0*1e3))
             # Scale wind speeds
-            self.windSpeeds = self.windSpeeds*tau0/self.config.tau0
+            self.windSpeeds = self.windSpeeds*self.tau0/self.config.tau0
             # Computes tau0 at scaled wind speeds
-            vBar53 = (self.windSpeeds[:self.scrnNo]**(5./3.) * self.config.normScrnStrengths[:self.scrnNo]).sum() ** (3./5.)
-            tau0 = 0.314 * self.r0 / vBar53
+            self.vBar53 = (self.windSpeeds[:self.scrnNo]**(5./3.) * self.config.normScrnStrengths[:self.scrnNo]).sum() ** (3./5.)
+            self.tau0 = 0.314 * self.r0 / self.vBar53
+            
+        self.cn2 = r0_to_cn2(self.r0)*self.config.normScrnStrengths
+        self.theta0 = isoplanaticAngle(self.cn2,self.config.scrnHeights)
+        self.rytov = rytov_variance(self.cn2, self.config.scrnHeights)
 
         ## Print turbulence summary
-        logger.info("Turbulence summary @ 500 nm:")
-        logger.info('| r0 = {0:.2f} m ({1:.2f}" seeing)'.format(self.r0, numpy.degrees(0.5e-6/self.r0)*3600.0))
-        logger.info("| Vbar_5/3 = {0:.2f} m/s".format(vBar53))
-        logger.info("| tau0 = {0:.2f} ms".format(tau0*1e3))
+        logger.info("Turbulence summary for given turbulence @ 500 nm @ zenith:")
+        logger.info("Turbulence summary @ 500 nm @ line-of-sight:")
+        logger.info('| zenith distance = {:.0f}degree'.format(numpy.degrees(self.zeta)))
+        logger.info('| r0 = {0:.2f} cm ({1:.2f}" seeing)'.format(self.r0*100, numpy.degrees(0.5e-6/self.r0)*3600.0))
+        logger.info('| L0 = {:}m'.format(self.L0s))
+        logger.info('| height = {:}m'.format(self.config.scrnHeights))
+        logger.info("| V = {} m/s".format(self.windSpeeds))
+        logger.info("| Vbar_5/3 = {0:.2f} m/s".format(self.vBar53))
+        logger.info("| tau0 = {0:.2f} ms".format(self.tau0*1e3))
+        logger.info('| theta0 = {0:.2f}"'.format(self.theta0))
+        logger.info("| var-log-amp = {0:.2f}".format(self.rytov/4))
 
         self.scrnPos = {}
         self.wholeScrns = {}

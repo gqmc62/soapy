@@ -1,0 +1,90 @@
+simName: HOGS-v3-TTFastPiezo
+pupilSize: 128
+nGS: 1
+nDM: 2
+nSci: 2
+nIters: 1000
+loopTime: 0.001
+threads: 4
+
+verbosity: 2
+
+saveCalib: False
+saveSlopes: False
+saveDmCommands: False
+saveStrehl: True
+saveWfe: True
+saveLgsPsf: False
+saveSciPsf: True
+
+
+Atmosphere:
+  scrnNo: 4
+  scrnHeights: [0, 5000, 10000, 15000]
+  scrnStrengths: [0.5, 0.3, 0.1, 0.1]
+  windDirs: [0, 45, 90, 135]
+  windSpeeds: [10, 10, 15, 20]
+  r0: 0.042
+  L0: [20, 20, 20, 20]
+  infinite: True
+
+
+Telescope:
+  telDiam: 0.7
+  obsDiam: 0.21
+  mask: circle
+
+WFS:
+  0:
+    type: ShackHartmann
+    GSPosition: [0, 0]
+    GSHeight: 510000
+    GSMag: 0
+    nxSubaps: 18
+    pxlsPerSubap: 8
+    subapFOV: 26.4
+    wavelength: 625e-9
+    photonNoise: True
+    eReadNoise: 37
+    throughput: 0.077
+    propagationMode: Geometric
+    subapThreshold: 0.5
+    centThreshold: 0.1
+
+
+DM:
+  0:
+    type: TT
+    closed: True
+    iMatValue: 0.5
+
+  1:
+    type: FastPiezo
+    closed: True
+    nxActuators: 17
+    iMatValue: 250
+
+Reconstructor:
+  type: MVM
+  svdConditioning: 0.02
+  gain: 0.5
+
+Science:
+  0:
+    position: [0, 0]
+    FOV: 10
+    wavelength: 1.050e-6
+    pxls: 64
+    height: 0
+    propagationMode: Geometric
+    propagationDir: down
+    instStrehlWithTT: True
+  1:
+    position: [10, 0]
+    FOV: 10
+    wavelength: 1.050e-6
+    pxls: 64
+    height: 510000
+    propagationMode: Geometric
+    propagationDir: up
+    instStrehlWithTT: True

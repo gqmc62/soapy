@@ -20,6 +20,8 @@ import pyfftw
 import aotools
 from aotools.image_processing import centroiders
 
+from matplotlib import pyplot as plt
+
 from .. import LGS, logger, lineofsight, AOFFT, interp
 from . import wfs
 from .. import numbalib
@@ -44,6 +46,7 @@ class ShackHartmann(wfs.WFS):
         Calculate some parameters to be used during initialisation
         """
         super(ShackHartmann, self).calcInitParams()
+        # super(ShackHartmann, self).allocDataArrays()
 
         # Sort out some required parameters
         self.nx_subaps = self.config.nxSubaps
@@ -54,7 +57,7 @@ class ShackHartmann(wfs.WFS):
         self.subap_threshold = self.config.subapThreshold
 
         # Calculate some others
-        self.pixel_scale =self.subap_fov / self.nx_subap_pixels
+        self.pixel_scale = self.subap_fov / self.nx_subap_pixels
         self.subap_fov_rad = self.subap_fov * numpy.pi / (180. * 3600)
         self.subap_diam = self.telescope_diameter/self.nx_subaps
         self.nm_to_rad = 1e-9 * (2 * numpy.pi) / self.wavelength
@@ -84,6 +87,9 @@ class ShackHartmann(wfs.WFS):
                 self.nx_subaps*self.nx_subap_interp*
                 (float(self.sim_size)/self.pupil_size)
                 ))
+        
+        if self.nx_interp_efield%2 == 1:
+            self.nx_interp_efield += 1
 
         # If physical prop, must always be at same pixel scale because we can't interpolate EField afterwards
         # If not, can use less phase points for speed
@@ -92,6 +98,8 @@ class ShackHartmann(wfs.WFS):
             out_pixel_scale = (float(self.sim_size) / float(self.nx_interp_efield)) * self.phase_scale
             self.los.calcInitParams(
                     out_pixel_scale=out_pixel_scale, nx_out_pixels=self.nx_interp_efield)
+            # print('i am shwfs')
+            self.los.allocDataArrays()
 
         # Calculate the subaps that are actually seen behind the pupil mask
         self.findActiveSubaps()
@@ -106,7 +114,7 @@ class ShackHartmann(wfs.WFS):
         """
         self.los = lineofsight.LineOfSight(
                 self.config, self.soapy_config,
-                propagation_direction="down")
+                propagation_direction="down",mask=self.mask)
 
 
     def findActiveSubaps(self):
@@ -160,7 +168,9 @@ class ShackHartmann(wfs.WFS):
         """
 
         #Calculate the FFT padding to use
+        #print( self.nx_subap_pixels_oversize,self.config.fftOversamp)
         self.subapFFTPadding = self.nx_subap_pixels_oversize * self.config.fftOversamp
+        #print(self.subapFFTPadding , self.nx_subap_interp)
         if self.subapFFTPadding < self.nx_subap_interp:
             while self.subapFFTPadding<self.nx_subap_interp:
                 self.config.fftOversamp+=1
@@ -176,7 +186,7 @@ class ShackHartmann(wfs.WFS):
         #         axes=(-2,-1), mode="pyfftw",dtype=CDTYPE,
         #         THREADS=self.threads,
         #         fftw_FLAGS=(self.config.fftwFlag,"FFTW_DESTROY_INPUT"))
-
+        #print(self.n_subaps, self.subapFFTPadding, self.subapFFTPadding)
         self.fft_input_data = pyfftw.empty_aligned(
                 (self.n_subaps, self.subapFFTPadding, self.subapFFTPadding), dtype=CDTYPE)
         self.fft_output_data = pyfftw.empty_aligned(
@@ -332,23 +342,53 @@ class ShackHartmann(wfs.WFS):
 
         else:
             self.interp_efield[:] = interp.zoom(los.EField, self.nx_interp_efield)
+            # plt.imshow(numpy.angle(self.interp_efield)*self.mask,vmin=-numpy.pi,vmax=numpy.pi)
+            # plt.colorbar()
+            # plt.title('wfs pupil plane phase')
+            # plt.show()
+            # plt.imshow(numpy.abs(self.interp_efield)**2*self.mask,vmin=0,vmax=2)
+            # plt.colorbar()
+            # plt.title('wfs pupil plane intensity')
+            # plt.show()
 
         # Create an array of individual subap EFields
         self.fft_input_data[:] = 0
         numbalib.wfslib.chop_subaps_mask(
                 self.interp_efield, self.interp_subap_coords, self.nx_subap_interp,
                 self.fft_input_data, self.scaledMask)
+        # plt.imshow(numpy.angle(self.fft_input_data[self.n_subaps//2-1]))
+        # plt.colorbar()
+        # plt.show()
+        # plt.imshow(numpy.angle(self.fft_input_data[self.n_subaps//2]))
+        # plt.colorbar()
+        # plt.show()
+        # plt.imshow(numpy.angle(self.fft_input_data[self.n_subaps//2+1]))
+        # plt.colorbar()
+        # plt.show()
+        
         self.fft_input_data[:, :self.nx_subap_interp, :self.nx_subap_interp] *= self.tilt_fix_efield
         self.FFT()
 
         self.temp_subap_focus = AOFFT.ftShift2d(self.fft_output_data)
-
+        
+        # plt.imshow(numpy.abs(self.temp_subap_focus[self.n_subaps//2-1])**2)
+        # plt.colorbar()
+        # plt.show()
+        # plt.imshow(numpy.abs(self.temp_subap_focus[self.n_subaps//2])**2)
+        # plt.colorbar()
+        # plt.show()
+        # plt.imshow(numpy.abs(self.temp_subap_focus[self.n_subaps//2+1])**2)
+        # plt.colorbar()
+        # plt.show()
+        
         numbalib.abs_squared(self.temp_subap_focus, self.temp_subap_intensity)
 
         if intensity != 1:
             self.temp_subap_intensity *= intensity
 
         self.subap_focus_intensity += self.temp_subap_intensity
+        
+        
 
 
     def integrateDetectorPlane(self):
@@ -394,6 +434,16 @@ class ShackHartmann(wfs.WFS):
 
         if self.config.eReadNoise!=0:
             self.addReadNoise()
+            
+
+
+            
+        # plt.imshow(self.detector/self.detector.max(),vmin=0,vmax=1)
+        # plt.colorbar()
+        # plt.title('wfs detector plane')
+        # plt.show()
+        
+        # make_quiver_plot(self)
 
 
     def applyLgsUplink(self):
@@ -428,6 +478,12 @@ class ShackHartmann(wfs.WFS):
         numbalib.wfslib.chop_subaps(
                 self.detector, self.detector_cent_coords, self.nx_subap_pixels,
                 self.centSubapArrays)
+        
+        subap_intensity = self.centSubapArrays.sum(-1).sum(-1)
+        subap_intensity /= numpy.median(subap_intensity)
+        subap_mask = (subap_intensity >= self.config.globalCentThreshold)
+        
+        self.centSubapArrays = subap_mask[:,None,None] * self.centSubapArrays
 
         slopes = getattr(centroiders, self.config.centMethod)(
                 self.centSubapArrays,
@@ -585,3 +641,45 @@ def photons_per_mag(mag, mask, phase_scale, exposureTime, zeropoint):
     n_photons *= (10**(-float(mag)/2.5)) * exposureTime
 
     return n_photons
+
+# def make_quiver_plot(wfs):
+#     position = wfs.detector_cent_coords
+#     N = position.shape[0]
+    
+#     step = (position[N//2 + 1,1]
+#             - position[N//2,1])
+#     position = position // step
+    
+#     slopex = wfs.slopes[:N]
+#     slopey = wfs.slopes[N:]
+#     plt.quiver(rearrange1(slopex, position),
+#                 rearrange1(slopey, position),
+#                 scale=1, scale_units='inches')
+#     plt.axis('square')
+#     plt.show()
+#     return
+
+# def rearrange1(A, position):
+#     """
+#     rearrange soapy reported wfs value from 1d with skips into 2d
+
+#     Parameters
+#     ----------
+#     A : TYPE
+#         DESCRIPTION.
+#     position : TYPE
+#         DESCRIPTION.
+
+#     Returns
+#     -------
+#     a : TYPE
+#         DESCRIPTION.
+
+#     """
+#     N = position.shape[0]
+#     size = numpy.max(position) - numpy.min(position) + 1
+#     DIM = position.shape[1]
+#     a = numpy.zeros((size,)*DIM, dtype=float)
+#     for n in numpy.arange(N):
+#         a[tuple(position[n])] = A[n]
+#     return a

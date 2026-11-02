@@ -29,6 +29,8 @@ import pyfftw
 
 import aotools
 
+from matplotlib import pyplot as plt
+
 from . import logger, lineofsight, numbalib, interp
 DTYPE = numpy.float32
 CDTYPE = numpy.complex64
@@ -63,73 +65,28 @@ class PSFCamera(object):
         self.fov_rad = self.config.FOV * numpy.pi / (180. * 3600)
 
         self.setMask(mask)
-
-        # Calculate the number of pixels required in the aperture plane
-        # To generate the correct FOV in the focal plane
-        self.FOVPxlNo = int(numpy.round(
-            self.telescope_diameter * self.fov_rad
-            / self.config.wavelength))
-
-        # WIP: We dont' want to down sample too much from the users
-        # specifed pupil_size, so find an integer factor of elements greater than required
-        # This gives a focus FOV n times larger than specified,
-        # but later we will crop the focal plane back down to size
-        self.crop_fov_factor = 1 + self.pupil_size // self.FOVPxlNo
-        self.fov_crop_elements = (self.FOVPxlNo * self.crop_fov_factor - self.FOVPxlNo) // 2
-        self.FOVPxlNo *= self.crop_fov_factor
-
-        # And then pad it by the required telescope padding.
-        # Will later cut out the FOVPxlNo of pixels for focussing
-        self.padFOVPxlNo = int(round(
-            self.FOVPxlNo * float(self.sim_size)
-            / self.pupil_size)
-        )
-
-        # If odd, keep odd, if even, keep even - keeps padding an integer on each side
-        if self.padFOVPxlNo % 2 != self.FOVPxlNo % 2:
-            self.padFOVPxlNo += 1
-        self.fov_sim_pad = int((self.padFOVPxlNo - self.FOVPxlNo) // 2.)
-
-        # If propagation direction is up, need to consider a mask in the optical propagation
-        # Otherwise, we'll apply it later
-        if self.config.propagationDir == "up":
-            los_mask = self.mask
-        else:
-            los_mask = None
+        self.pupil_mask = numpy.asarray(self.mask[self.sim_pad:-self.sim_pad,self.sim_pad:-self.sim_pad],dtype=bool)
 
         self.los = lineofsight.LineOfSight(
                 self.config, self.soapy_config,
-                propagation_direction=self.config.propagationDir, mask=los_mask)
-
-        # Init line of sight - Get the phase at the right size for the FOV
-        if self.config.propagationMode == "Physical":
-            # If physical prop, must do propagation at 
-            # at FOV size to avoid interpolation of EField
-            out_pixel_scale = float(self.telescope_diameter) / float(self.FOVPxlNo)
-            self.los.calcInitParams(
-                    out_pixel_scale=out_pixel_scale,
-                    nx_out_pixels=self.padFOVPxlNo
-            )
+                propagation_direction=self.config.propagationDir, mask=self.mask) # with mask for sim size
         
-        # Cut out the mask just around the telescope aperture
-        simpad = self.simConfig.simPad
-        mask_pupil = self.mask[simpad: -simpad, simpad: -simpad]
-        self.scaledMask = numpy.round(interp.zoom(mask_pupil, self.FOVPxlNo)
-                                      ).astype("int32")
+        # to reduce conversion, pixel size = simulation/atm pixel size, nx_out_pixels = number of accurate pixels = sim size
+        self.los.calcInitParams(
+                out_pixel_scale=float(self.telescope_diameter / self.pupil_size),
+                nx_out_pixels=self.sim_size
+        )
+        self.los.allocDataArrays()
 
         # Init FFT object
-        # fft padding must be oversampled from nx_pixels, and an integer number of FOVPxlNo
-        self.FFTPadding = self.nx_pixels * self.config.fftOversamp
-        if self.FFTPadding < self.FOVPxlNo:
-            while self.FFTPadding < self.FOVPxlNo:
-                self.config.fftOversamp += 1
-                self.FFTPadding\
-                    = self.nx_pixels * self.config.fftOversamp
-            logger.info(
-                "SCI FFT Padding less than FOV size... Setting oversampling to %d" % self.config.fftOversamp)
-
-        self.fft_crop_elements = (self.FFTPadding * self.crop_fov_factor - self.FFTPadding)//2
-        self.FFTPadding *= self.crop_fov_factor
+        # propagation size for pupil to focal plane of the sci cams
+        self.FFTPadding = int(numpy.ceil(
+            (self.config.wavelength * self.nx_pixels / self.fov_rad
+             / (self.telescope_diameter / self.pupil_size))
+            /2)*2)
+        
+        # N//2 - nout//2
+        self.fft_crop_elements = (self.FFTPadding - self.nx_pixels)//2
 
         # create an FFTW object for fast FFT calculation
         # Must first define input and output arrays, then define the 
@@ -145,28 +102,25 @@ class PSFCamera(object):
                 flags=(self.config.fftwFlag, "FFTW_DESTROY_INPUT")
         )
 
-        # Convert phase in nm to radians at science wavelength
-        self.phsNm2Rad = 2*numpy.pi/(self.sciConfig.wavelength*10**9)
-
         # Allocate some useful arrays
-        self.interp_coords = numpy.linspace(
-                self.sim_pad, self.pupil_size + self.sim_pad, self.FOVPxlNo).astype(DTYPE)
-        self.interp_coords = self.interp_coords.clip(0, self.los.nx_out_pixels-1.00001)
-
-        self.interp_phase = numpy.zeros((self.FOVPxlNo, self.FOVPxlNo), DTYPE)
-        self.focus_efield = numpy.zeros((self.FFTPadding, self.FFTPadding), dtype=CDTYPE)
-        focus_intensity_size = self.FFTPadding // self.crop_fov_factor if self.crop_fov_factor else self.FFTPadding
-        self.focus_intensity = numpy.zeros(
-                (focus_intensity_size, focus_intensity_size), dtype=DTYPE)
+        self.focus_intensity = numpy.zeros((self.nx_pixels, self.nx_pixels), dtype=DTYPE)
         self.detector = numpy.zeros((self.nx_pixels, self.nx_pixels), dtype=DTYPE)
         self.long_exp_image = numpy.zeros_like(self.detector)
         self._long_exp_image = numpy.zeros_like(self.detector)
+        self.frame_count = 0
 
         # Calculate ideal PSF for purposes of strehl calculation
         self.los.frame()
         self.calcFocalPlane()
-        self.bestPSF = self.detector.copy()
-        self.psfMax = self.bestPSF.max()
+        # self.bestEField = numpy.copy(self.EField_fov)
+        self.psfMax = self.detector.max()
+        self.bestPSF = self.detector.copy()/self.psfMax
+        
+        # plt.imshow(self.bestPSF[self.nx_pixels//2 - 8 : self.nx_pixels//2 + 9,
+        #                           self.nx_pixels//2 - 8 : self.nx_pixels//2 + 9],vmin=0,vmax=1)
+        # plt.colorbar()
+        # plt.show()
+        # self.frame_count = 0
         self.longExpStrehl = 0
         self.instStrehl = 0
 
@@ -181,8 +135,7 @@ class PSFCamera(object):
         self.long_exp_image[:] = 0
         self.detector[:] = 0
         self.focus_intensity[:] = 0
-        self.focus_efield[:] = 0
-        self.interp_phase[:] = 0
+        self.frame_count = 0
 
 
     def setMask(self, mask):
@@ -206,29 +159,27 @@ class PSFCamera(object):
         Takes the calculated pupil phase, scales for the correct FOV,
         and uses an FFT to transform to the focal plane.
         '''
-        if self.config.propagationMode == "Physical":
-            # If physical propagation, efield should already be the correct
-            # size for the Field of View
-            self.EField_fov = self.los.EField[
-                    self.fov_sim_pad: -self.fov_sim_pad,
-                    self.fov_sim_pad: -self.fov_sim_pad] # crop 
 
-        else:
-            # If geo prop...
+        
+        # If physical propagation, efield should already be the correct
+        # size for the Field of View
+        self.EField_fov = self.los.EField[
+                self.sim_pad: -self.sim_pad,
+                self.sim_pad: -self.sim_pad] # crop to pupil size
+        
+        residual_field = numpy.copy(self.EField_fov)*self.pupil_mask
+            
+        piston = numpy.nanmean(residual_field[self.pupil_mask])
+        piston /= numpy.abs(piston)
+        
+        residual_field /= piston
+        residual_field *= self.pupil_mask
 
-            # Store the residual phase for later analysis and plotting
-            self.residual = self.los.residual.copy() * self.mask
 
-            # Interpolate to the correct number of pixels for the specced
-            # Field of View on the detector
-            numbalib.bilinear_interp(
-                    self.los.phase, self.interp_coords, self.interp_coords, self.interp_phase,
-                    bounds_check=False)
-
-            self.EField_fov = numpy.exp(1j * self.interp_phase)
+        self.residual = residual_field
         
         if self.config.propagationDir == "down":
-            self.EField_fov *= self.scaledMask
+            self.EField_fov *= self.pupil_mask
 
         # Get the focal plane using an FFT
         # Reset the FFT from the previous iteration
@@ -236,17 +187,27 @@ class PSFCamera(object):
         
         # place the array in the centre of the padding
         self.fft_input_data[
-                (self.FFTPadding - self.FOVPxlNo)//2:
-                (self.FFTPadding + self.FOVPxlNo)//2, 
-                (self.FFTPadding - self.FOVPxlNo)//2:
-                (self.FFTPadding + self.FOVPxlNo)//2
+                (self.FFTPadding - self.pupil_size)//2:
+                (self.FFTPadding + self.pupil_size)//2, 
+                (self.FFTPadding - self.pupil_size)//2:
+                (self.FFTPadding + self.pupil_size)//2
                 ] = self.EField_fov
+        # plt.imshow(numpy.abs(self.fft_input_data)**2)
+        # plt.title('input data')
+        # plt.show()
         # This means we can do a pre-fft shift properly. This is neccessary for anythign that 
         # cares about the EField of the focal plane, not just the intensity pattern
         numbalib.fftshift_2d_inplace(self.fft_input_data)
         self.fft_calculator() # perform FFT
         numbalib.fftshift_2d_inplace(self.fft_output_data)
-
+        
+        # plt.imshow(numpy.abs(self.fft_output_data)**2)
+        # plt.title('input data')
+        # plt.show()
+        # where = numpy.where(numpy.abs(self.fft_output_data)**2==(numpy.abs(self.fft_output_data)**2).max())
+        # plt.imshow(numpy.abs(self.fft_output_data[where[0][0]-4:where[0][0]+5,where[1][0]-4:where[1][0]+5])**2)
+        # plt.title('output data')
+        # plt.show()
 
         if self.fft_crop_elements != 0:
         # Bin down to detector number of pixels
@@ -260,17 +221,28 @@ class PSFCamera(object):
 
         # Turn complex efield into intensity
         numbalib.abs_squared(self.fov_focus_efield, out=self.focus_intensity)
-
-
-        # numbalib.bin_img(self.focus_intensity, self.config.fftOversamp, self.detector)
-        numbalib.bin_img(self.focus_intensity, self.config.fftOversamp, self.detector)
+        self.detector = self.focus_intensity
 
         # add detector to long exposure image
         self._long_exp_image += self.detector
+        self.frame_count += 1
 
         # Normalise the psf
-        self.detector /= self.detector.sum()
-        self.long_exp_image = self._long_exp_image / self._long_exp_image.sum()
+        # try:
+        #     self.detector /= self.psfMax
+        # except:
+        #     pass
+        self.long_exp_image = self._long_exp_image
+        
+        # plt.imshow(numpy.log10(self.detector/self.detector.max()),vmin=-3,vmax=0)
+        # plt.colorbar()
+        # plt.title('science detector in log10')
+        # plt.show()
+        
+        # plt.imshow(self.detector/self.detector.max(),vmin=0,vmax=1)
+        # plt.colorbar()
+        # plt.title('science detector')
+        # plt.show()
 
 
     def calcInstStrehl(self):
@@ -279,10 +251,39 @@ class PSFCamera(object):
         """
         if self.sciConfig.instStrehlWithTT:
             self.instStrehl = self.detector[self.sciConfig.pxls // 2, self.sciConfig.pxls // 2] / self.psfMax
-            self.longExpStrehl = self.long_exp_image[self.sciConfig.pxls //2, self.sciConfig.pxls //2] / self.psfMax
-        else: 
+            self.longExpStrehl = self.long_exp_image[self.sciConfig.pxls //2, self.sciConfig.pxls // 2] / (self.psfMax*self.frame_count)
+        else:
             self.instStrehl = self.detector.max() / self.psfMax
-            self.longExpStrehl = self.long_exp_image.max() / self.psfMax
+            self.longExpStrehl = self.long_exp_image.max() / (self.psfMax*self.frame_count)
+            # if self.config.propagationMode == "Physical":
+            #     A = self.EField_fov
+            #     B = self.bestEField
+            #     self.instStrehl = (numpy.abs(numpy.sum(A*numpy.conjugate(B)))**2
+            #                        / numpy.abs(numpy.sum(A*numpy.conjugate(A)))
+            #                        / numpy.abs(numpy.sum(B*numpy.conjugate(B))))
+            #     self.longExpStrehl = self.long_exp_image.max() / self.psfMax
+            #     print(self.instStrehl,'not support long strehl for physical yet',self.longExpStrehl)
+            # else:
+            #     self.instStrehl = self.detector.max() / self.psfMax
+            #     self.longExpStrehl = self.long_exp_image.max() / self.psfMax
+        
+        # P = self.pupil_mask*self.EField_fov
+        # Q = self.pupil_mask
+        
+        # # strehl = (numpy.abs(numpy.sum(P*numpy.conjugate(Q)))**2
+        # #                     / numpy.abs(numpy.sum(P*numpy.conjugate(P)))
+        # #                     / numpy.abs(numpy.sum(Q*numpy.conjugate(Q))))
+        # rytov = numpy.var(numpy.log(numpy.abs(P[numpy.asarray(Q,dtype=bool)])))
+        
+        # plt.imshow(self.detector[self.nx_pixels//2 - 8 : self.nx_pixels//2 + 9,
+        #                          self.nx_pixels//2 - 8 : self.nx_pixels//2 + 9] / self.psfMax,vmin=0,vmax=1)
+        # plt.colorbar()
+        # plt.title('science detector, Strehl={:.2f}, Rytov={:.2f}'.format(self.instStrehl,rytov))
+        # plt.show()
+        if self.soapy_config.wfss[0].plot == True:
+            plt.imshow(self.detector)
+            plt.title('science detector')
+            plt.show()
 
 
     def calc_wavefronterror(self):
@@ -291,21 +292,61 @@ class PSFCamera(object):
         
         Returns:
              float: RMS WFE across pupil in nm
+             now do intensity weighted wavefront error
         """
         if self.config.propagationMode == "Physical":
-            return 0
-        res = (self.los.phase.copy() * self.mask) / self.los.phs2Rad
+            
+            residual_field = self.residual
+            
+            # plt.imshow(numpy.angle(residual_field)*self.mask,vmin=-numpy.pi,vmax=numpy.pi)
+            # plt.title('science residual rad phys')
+            # plt.colorbar()
+            # plt.show()
+            
+            piston = numpy.nanmean(residual_field[self.pupil_mask])
+            piston /= numpy.abs(piston)
+            
+            residual_field /= piston
+            residual_field *= self.pupil_mask
+            
+            intensity = numpy.abs(residual_field)**2
+            
+            ms_wfe = numpy.nansum(intensity * numpy.square(my_unwrap(numpy.angle(
+                residual_field
+                ))/self.los.phs2Rad*self.pupil_mask)) / numpy.nansum(intensity * self.pupil_mask)
+            
+            rms_wfe = numpy.sqrt(ms_wfe)
+            # print('a')
+            # print(rms_wfe)
+            # print('b')
 
-        # Piston is mean across aperture
-        piston = res.sum() / self.mask.sum()
-
-        # remove from WFE measurements as its not a problem
-        res -= (piston*self.mask)
-
-        ms_wfe = numpy.square(res).sum() / self.mask.sum()
-        rms_wfe = numpy.sqrt(ms_wfe)
-
-        return rms_wfe
+            if self.soapy_config.sim.saveRytov :
+            
+                P = residual_field
+                Q = self.pupil_mask
+                
+                # strehl = (numpy.abs(numpy.sum(P*numpy.conjugate(Q)))**2
+                #                     / numpy.abs(numpy.sum(P*numpy.conjugate(P)))
+                #                     / numpy.abs(numpy.sum(Q*numpy.conjugate(Q))))
+                rytov = numpy.var(numpy.log(numpy.abs(P[numpy.asarray(Q,dtype=bool)])))
+                
+                return rms_wfe, rytov
+            else:
+                return rms_wfe
+        
+        else:
+            res = (self.los.phase.copy() * self.mask) / self.los.phs2Rad
+    
+            # Piston is mean across aperture
+            piston = res.sum() / self.mask.sum()
+    
+            # remove from WFE measurements as its not a problem
+            res -= (piston*self.mask)
+    
+            ms_wfe = numpy.square(res).sum() / self.mask.sum()
+            rms_wfe = numpy.sqrt(ms_wfe)
+    
+            return rms_wfe
 
 
     def frame(self, scrns, correction=None):
@@ -351,6 +392,48 @@ class singleModeFibre(PSFCamera):
 
     def calcInstStrehl(self):
         self.instStrehl = numpy.abs(numpy.sum(self.fibre_efield * self.los.EField * self.normMask))**2
+
+def my_unwrap(wrapped_phase, period=2*numpy.pi):
+    
+    # numpy unwrap start unwrap at 0 coordinate
+    # but for circular aperture there is no corner!
+    # if we unwrap by each quardrant there will be a corner! noice.
+    # but we may have to stitch them back together nicely
+    # so things should be de-piston to the center
+    
+    center = wrapped_phase.shape[-1]//2
+    unwrapped_phase = numpy.zeros_like(wrapped_phase)
+    
+    # ++ quardrant
+    wrapped_quardrant = wrapped_phase[...,center:,center:]
+    unwrapped_quardrant = numpy.unwrap(numpy.unwrap(wrapped_quardrant,axis=0),axis=1)
+      
+    unwrapped_quardrant -= unwrapped_quardrant[0,0]
+    unwrapped_phase[...,center:,center:] = unwrapped_quardrant
+    
+    # +- quardrant
+    wrapped_quardrant = wrapped_phase[...,center:,:center][:,::-1]
+    unwrapped_quardrant = numpy.unwrap(numpy.unwrap(wrapped_quardrant,axis=0),axis=1)
+      
+    unwrapped_quardrant -= unwrapped_quardrant[0,0]
+    unwrapped_phase[...,center:,:center] = unwrapped_quardrant[:,::-1]
+    
+    # -+ quardrant
+    wrapped_quardrant = wrapped_phase[...,:center,center:][::-1,:]
+    unwrapped_quardrant = numpy.unwrap(numpy.unwrap(wrapped_quardrant,axis=0),axis=1)
+      
+    unwrapped_quardrant -= unwrapped_quardrant[0,0]
+    unwrapped_phase[...,:center,center:] = unwrapped_quardrant[::-1,:]
+      
+    # -- quardrant
+    wrapped_quardrant = wrapped_phase[...,:center,:center][::-1,::-1]
+    unwrapped_quardrant = numpy.unwrap(numpy.unwrap(wrapped_quardrant,axis=0),axis=1)
+      
+    unwrapped_quardrant -= unwrapped_quardrant[0,0]
+    unwrapped_phase[...,:center,:center] = unwrapped_quardrant[::-1,::-1]
+    
+    return unwrapped_phase
+
 
 
 # Compatability with older versions

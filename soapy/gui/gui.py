@@ -31,13 +31,29 @@ import sys
 #     sip.setapi(name, API_VERSION)
 
 from .. import logger
-from PyQt5 import QtGui, QtWidgets, QtCore
+# Attempt to import PyQt5, if not try PyQt4
+try:
+    from PyQt5 import QtGui, QtWidgets, QtCore
+    PYQT_VERSION = 5
+except (ImportError ,RuntimeError):
+    from PyQt4 import QtGui, QtCore
+    QtWidgets = QtGui
+    PYQT_VERSION = 4
+logger.debug("Use PyQT Version {}".format(PYQT_VERSION ))
 
 # Do this so uses new Jupyter console if available
-from qtconsole.rich_jupyter_widget import RichJupyterWidget as RichIPythonWidget
-from qtconsole.inprocess import QtInProcessKernelManager
+try:
+    from qtconsole.rich_jupyter_widget import RichJupyterWidget as RichIPythonWidget
+    from qtconsole.inprocess import QtInProcessKernelManager
+except ImportError:
+    from IPython.qt.console.rich_ipython_widget import RichIPythonWidget
+    from IPython.qt.inprocess import QtInProcessKernelManager
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+
+if PYQT_VERSION == 5:
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+elif PYQT_VERSION == 4:
+    from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 
 from matplotlib.figure import Figure
 import matplotlib.pyplot as pyplot
@@ -65,14 +81,29 @@ import pyqtgraph
 #         ])
 
 
-from .aogui_ui5 import Ui_MainWindow
+if PYQT_VERSION == 5:
+    from .aogui_ui5 import Ui_MainWindow
+elif PYQT_VERSION == 4:
+    from .aogui_ui4 import Ui_MainWindow
+
+
 
 import numpy
 import time
 import json
 import traceback
 from functools import partial
-import queue
+#Python2/3  compatibility
+try:
+    import queue
+except ImportError:
+
+    import Queue as queue
+try:
+    xrange
+except NameError:
+    xrange = range
+
 
 from argparse import ArgumentParser
 import pylab
@@ -290,33 +321,33 @@ class GUI(QtWidgets.QMainWindow):
             scaleValues = self.getPlotScaling(plotDict)
 
             for wfs in range(self.config.sim.nGS):
-                wfsFP = plotDict['wfsFocalPlane'][wfs]
-                if wfsFP is not None:
+                if numpy.any(plotDict["wfsFocalPlane"][wfs])!=None:
+                    wfsFP = plotDict['wfsFocalPlane'][wfs]
                     self.wfsPlots[wfs].setImage(wfsFP, lut=self.LUT)
                     # self.wfsPlots[wfs].getViewBox().setRange(
                     #         QtCore.QRectF(0, 0, wfsFP.shape[0],
                     #         wfsFP.shape[1])
                     #         )
 
-                wfsPhase = plotDict["wfsPhase"][wfs]
-                if wfsPhase is not None:
+                if numpy.any(plotDict["wfsPhase"][wfs])!=None:
+                    wfsPhase = plotDict["wfsPhase"][wfs]
                     self.phasePlots[wfs].setImage(
                             wfsPhase, lut=self.LUT, levels=scaleValues)
                     self.phasePlots[wfs].getViewBox().setRange(
                             QtCore.QRectF(0, 0, wfsPhase.shape[0], wfsPhase.shape[1]))
 
-                if plotDict["lgsPsf"][wfs] is not None:
+                if numpy.any(plotDict["lgsPsf"][wfs])!=None:
                     self.lgsPlots[wfs].setImage(
                         plotDict["lgsPsf"][wfs], lut=self.LUT)
 
             for dm in range(self.config.sim.nDM):
-                dmShape = plotDict["dmShape"][dm]
-                if dmShape is not None :
-                    self.dmPlots[dm].setImage(dmShape,
+                if numpy.any(plotDict["dmShape"][dm]) !=None:
+                    dmShape = plotDict["dmShape"][dm]
+                    self.dmPlots[dm].setImage(plotDict["dmShape"][dm],
                                             lut=self.LUT, levels=scaleValues)
 
             for sci in range(self.config.sim.nSci):
-                if plotDict["sciImg"][sci] is not None:
+                if numpy.any(plotDict["sciImg"][sci])!=None:
                     if self.ui.instExpRadio.isChecked():
                         self.sciPlots[sci].setImage(
                                 plotDict["instSciImg"][sci], lut=self.LUT)
@@ -324,8 +355,9 @@ class GUI(QtWidgets.QMainWindow):
                         self.sciPlots[sci].setImage(
                                 plotDict["sciImg"][sci], lut=self.LUT)
 
-                residual = plotDict["residual"][sci]
-                if residual is not None:
+                if numpy.any(plotDict["residual"][sci])!=None:
+                    residual = plotDict["residual"][sci]
+
                     self.resPlots[sci].setImage(
                             residual, lut=self.LUT, levels=scaleValues)
 
@@ -341,22 +373,19 @@ class GUI(QtWidgets.QMainWindow):
         plotMins = []
         plotMaxs = []
         for wfs in range(self.config.sim.nGS):
-            wfsPhase = plotDict["wfsPhase"][wfs]
-            if wfsPhase is not None:
-                plotMins.append(wfsPhase.min())
-                plotMaxs.append(wfsPhase.max())
+            if numpy.any(plotDict["wfsPhase"])!=None:
+                plotMins.append(plotDict["wfsPhase"][wfs].min())
+                plotMaxs.append(plotDict["wfsPhase"][wfs].max())
 
         for dm in range(self.config.sim.nDM):
-            dmShape = plotDict["dmShape"][dm]
-            if dmShape is not None:
-                plotMins.append(dmShape.min())
-                plotMaxs.append(dmShape.max())
+            if numpy.any(plotDict["dmShape"][dm])!=None:
+                plotMins.append(plotDict["dmShape"][dm].min())
+                plotMaxs.append(plotDict["dmShape"][dm].max())
 
         for sci in range(self.config.sim.nSci):
-            residualSci = plotDict["residual"][sci]
-            if residualSci is not None:
-                plotMins.append(residualSci.min())
-                plotMaxs.append(residualSci.max())
+            if numpy.any(plotDict["residual"][sci])!=None:
+                plotMins.append(plotDict["residual"][sci].min())
+                plotMaxs.append(plotDict["residual"][sci].max())
 
         # Now get the min and max of mins and maxs
         plotMin = min(plotMins)
@@ -470,7 +499,7 @@ class GUI(QtWidgets.QMainWindow):
             del plt
 
         self.strehlPlts=[]
-        for sci in range(self.config.sim.nSci):
+        for sci in xrange(self.config.sim.nSci):
             self.strehlPlts.append(self.strehlAxes.plot(self.sim.instStrehl[sci],
                     linestyle=":", color=self.colorList[(self.colorNo+sci) % len(self.colorList)]))
             self.strehlPlts.append(self.strehlAxes.plot(self.sim.longStrehl[sci],

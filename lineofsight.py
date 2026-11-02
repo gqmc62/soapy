@@ -1,0 +1,1103 @@
+"""
+A generalised module to provide phase or the EField through a "Line Of Sight"
+
+Line of Sight Object
+====================
+The module contains a 'lineOfSight' object, which calculates the resulting
+phase or complex amplitude from propogating through the atmosphere in a given
+direction. This can be done using either geometric propagation, where phase is
+simply summed for each layer, or physical propagation, where the phase is
+propagated between layers using an angular spectrum propagation method. Light
+can propogate either up or down.
+
+The Object takes a 'config' as an argument, which is likely to be the same
+config object as the module using it (WFSs, ScienceCams, or LGSs). It should
+contain paramters required, such as the observation direction and light
+wavelength. The `config` also determines whether to use physical or geometric
+propagation through the 'propagationMode' parameter.
+
+Examples::
+
+    from soapy import confParse, lineofsight
+
+    # Initialise a soapy conifuration file
+    config = confParse.loadSoapyConfig('conf/sh_8x8.py')
+
+    # Can make a 'LineOfSight' for WFSs
+    los = lineofsight.LineOfSight(config.wfss[0], config)
+
+    # Get resulting complex amplitude through line of sight
+    EField = los.frame(some_phase_screens)
+
+"""
+
+###############################################################################
+# physical propagation in this class can be optimized further
+# by rather converting to spatial space at every step before adding more phase
+# add them in fourier space instead.
+###############################################################################
+
+import numpy
+
+import aotools
+from aotools import opticalpropagation
+import copy 
+import datetime
+
+from . import logger, interp
+from . import numbalib
+
+from matplotlib import pyplot as plt
+import numpy as np
+
+import pyfftw
+
+DTYPE = numpy.float32
+CDTYPE = numpy.complex64
+
+# Python3 compatability
+try:
+    xrange
+except NameError:
+    xrange = range
+
+RAD2ASEC = 206264.849159
+ASEC2RAD = 1./RAD2ASEC
+
+
+class LineOfSight(object):
+    """
+    A "Line of sight" through a number of turbulence layers in the atmosphere,
+    observing ing a given direction.
+
+    Parameters:
+        config: The soapy config for the line of sight
+        simConfig: The soapy simulation config object
+        propagation_direction (str, optional): Direction of light propagation,
+        either `"up"` or `"down"`
+        outPxlScale (float, optional): The EField pixel scale required at the
+        output (m/pxl)
+        nOutPxls (int, optional): Number of pixels to return in EFIeld
+        mask (ndarray, optional): Mask to apply at the *beginning* of
+        propagation
+        metaPupilPos (list, dict, optional): A list or dictionary of the meta
+        pupil position at each turbulence layer height ub metres. If None,
+        works it out from GS position.
+    """
+    def __init__(
+            self, config, soapyConfig,
+            propagation_direction="down", out_pixel_scale=None,
+            nx_out_pixels=None, mask=None, metaPupilPos=None):
+        # self.count_allocateDataTime = 0
+        # self.count_calcInitParam = 0
+        self.config = config
+        self.soapy_config = soapyConfig
+        self.pupil_size = self.soapy_config.sim.pupilSize
+        self.phase_pixel_scale = 1./self.soapy_config.sim.pxlScale
+        self.sim_size = self.soapy_config.sim.simSize
+        self.wavelength = self.config.wavelength
+        self.telescope_diameter = self.soapy_config.tel.telDiam
+        self.propagation_direction = propagation_direction
+
+        self.source_altitude = self.height
+
+        self.nx_scrn_size = self.soapy_config.sim.scrnSize
+        self.n_layers = self.soapy_config.atmos.scrnNo
+        self.layer_altitudes = self.soapy_config.atmos.scrnHeights
+
+        self.n_dm = self.soapy_config.sim.nDM
+        self.dm_altitudes = numpy.array(
+            [self.soapy_config.dms[dm_n].altitude
+             for dm_n in range(self.n_dm)])
+
+        # If the line of sight has a launch position, must include in
+        # calculations! Conver to metres from centre of telescope
+        try:
+            self.launch_position = (numpy.array(self.config.launchPosition)
+                                    * self.telescope_diameter/2.)
+        except AttributeError:
+            self.launch_position = numpy.array([0, 0])
+
+        self.simConfig = soapyConfig.sim
+        self.atmosConfig = soapyConfig.atmos
+
+        self.mask = mask
+        # if (self.config.type == 'PSF'):
+        #     print(out_pixel_scale)
+        self.calcInitParams(out_pixel_scale, nx_out_pixels)
+        # if (self.config.type == 'PSF'):
+        #     print(self.out_pixel_scale)
+        # print('i am los')
+        # self.allocDataArrays()
+
+        # Can be set to use other values as metapupil position
+        self.metaPupilPos = metaPupilPos
+        
+        # dont delete this
+        # it means if propagation less than this distance
+        # its effect is mostly mathematical error!!!
+        # and should change pixel scale or something...
+        zmax = numpy.max(numpy.concatenate([
+            self.layer_altitudes,self.dm_altitudes,[0]]))
+        if 2*self.out_pixel_scale > 2*numpy.sqrt(self.wavelength*zmax):
+            print('this propagation should be geometric!!')
+            #self.config.propagationMode = 'Geometric'
+            
+        
+
+
+    # Some attributes for compatability between WFS and others
+    @property
+    def height(self):
+        try:
+            return self.config.height
+        except AttributeError:
+            return self.config.GSHeight
+
+    @height.setter
+    def height(self, height):
+        try:
+            self.config.height
+            self.config.height = height
+        except AttributeError:
+            self.config.GSHeight
+            self.config.GSHeight = height
+
+    @property
+    def position(self):
+        try:
+            return self.config.position
+        except AttributeError:
+            return self.config.GSPosition
+
+    @position.setter
+    def position(self, position):
+        try:
+            self.config.position
+            self.config.position = position
+        except AttributeError:
+            self.config.GSPosition
+            self.config.GSPosition = position
+
+############################################################
+# Initialisation routines
+
+
+    def calcInitParams(self, out_pixel_scale=None, nx_out_pixels=None):
+        """
+        Calculates some parameters required later
+
+        Parameters:
+            outPxlScale (float): Pixel scale of required phase/EField (metres/pxl)
+            nOutPxls (int): Size of output array in pixels
+        """
+        logger.debug("Calculate LOS Init PArams!")
+        # Convert phase deviation to radians at wfs wavelength.
+        # (currently in nm remember...?)
+        self.phs2Rad = 2*numpy.pi/(self.wavelength * 10**9)
+
+        # Get the size of the phase required by the system
+        self.in_pixel_scale = self.phase_pixel_scale
+
+        if out_pixel_scale is None:
+            self.out_pixel_scale = self.phase_pixel_scale
+        else:
+            self.out_pixel_scale = out_pixel_scale
+            
+        if (self.config.type == 'ShackHartmann'):
+            self.FOV = self.config.subapFOV/206265.
+        elif (self.config.type == 'PSF'):
+            self.FOV = self.config.FOV/206265.
+        # self.fov = 0
+        
+        
+            
+        if nx_out_pixels is None:
+            self.nx_out_pixels = self.simConfig.simSize
+            self.nx_in_pixels = self.nx_out_pixels
+        else:
+            self.nx_out_pixels = nx_out_pixels
+
+            self.nx_in_pixels = nx_out_pixels
+            
+        if self.config.propagationMode == 'Physical':
+            if self.propagation_direction == "up":
+                print('need to validate this version for uplink')
+                print('this version is optimized for downlink')
+                
+            
+            ###################################################################
+            # 'diffraction' angle
+            ###################################################################
+            # math
+            self.max_grid_diffraction_angle = self.wavelength/2./self.out_pixel_scale 
+            #
+            # physics
+            self.max_diffraction_angle = self.soapy_config.sim.max_diffraction_angle 
+            # self.max_diffraction_angle = self.wavelength/2./self.out_pixel_scale
+            ###################################################################
+
+            
+            # ***** !!!!!
+            # assume same pixel_scale throughout everything!!!!
+            # this is a big threat to soapy as soapy is so flexible
+            # things don't always share the same pixel scale
+            
+            # dm & atm are previously atm pad = (original + 2wvlz/r0/delta pxl each side)
+            
+            ###################################################################
+            # minimum size due to physics = pupil + (atmos diffrac + FOV)
+            ###################################################################
+            # cover all possible input
+            # this is for propagation process after the interpolation
+            # so now the input is at the output scale
+            self.nx_in_pixels = int(numpy.ceil(
+                (self.nx_out_pixels
+                 + numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
+                 * (2*self.max_diffraction_angle + self.FOV
+                    )/self.out_pixel_scale)
+                /2)*2)
+            # bump to the next subap
+            self.nx_in_pixels = int(numpy.ceil(
+                self.nx_in_pixels / (self.nx_out_pixels/self.soapy_config.wfss[0].nxSubaps) + 1)
+                * (self.nx_out_pixels/self.soapy_config.wfss[0].nxSubaps))
+            if self.nx_in_pixels%2 != 0:
+                self.nx_in_pixels += 1
+            ###################################################################
+            
+            # prop screen is the minimum of these two where either
+            # to be mirror prop pad to 2x(original + atm pad pxl each side) # why?
+            # or
+            # to prop pad size of (original + wvlz/2/delta**2 pxl each side)
+            # the prop pad, the perfect math, usually larger than 2x(original + 2x atm pad)
+            # however the 2x (original + 2xatm pad) is a perfect continuos pad
+            # that generate less noise, accurate, and if smaller will be more efficient.
+            # more info on testPropagationMirrorPadv2.py
+            
+            # mirror/symmetric pad because it reduces high spatial frequency
+            # which is the main source of noise.
+            # discontinuity = smaller than 2pxl frequency = alias into all frequency = noise!!
+            
+            ###################################################################
+            # variables description
+            # 1. nx_prop_pixels = total simulation pixel
+            # 2. nx_in_pixels
+            ###################################################################
+
+            ###################################################################
+            # simulation screen size = max of any of these
+            # 1: 2 x physical requirement
+            # 2: Physical requirement + math wrapping prevention
+            # 3: stop aliasing
+            ###################################################################
+            self.nx_prop_pixels = int(round(
+                numpy.max([
+                    # using max_grid_diffraction_angle here is correct
+                    # but it's too large TwT.
+                    # would the max_diffraaction_angle be good enough?
+
+                    # must be larger than input and output !! this is super important !!
+                    # DONT EVER REMOVE THIS CRITERIA !!
+                    # it's really important for this combo of conditions.
+                    self.nx_in_pixels, self.nx_out_pixels,
+                    
+                    # (2*self.nx_in_pixels),
+                    # no wrapping in general (data correct until edge of nin)
+                    # (self.nx_in_pixels//2 + self.nx_out_pixels//2
+                    #   + (numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
+                    #                     * (self.max_grid_diffraction_angle)/self.out_pixel_scale)),
+                    (self.nx_in_pixels//2 + self.nx_out_pixels//2
+                      + (numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
+                                        * (self.max_diffraction_angle)/self.out_pixel_scale)),
+                    
+                    # no wrapping for free atmosphere (data correct until edge of sim).
+                    # because we symmetric pad atm from phys to propsize, there is discontinuity at the edge.
+                    # the require extra space is now double.
+                    # this only apply to atm heights and dm heights is not needed in here
+                    # but well i still add dm height in for safety, i don't want any overlapping
+                    # (self.nx_out_pixels
+                    #   + (numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
+                    #                     * 2*(self.max_grid_diffraction_angle)/self.out_pixel_scale)),
+                    (self.nx_out_pixels
+                      + (numpy.max(numpy.concatenate([self.dm_altitudes,self.layer_altitudes,[0]]))
+                                        * 2*(self.max_diffraction_angle)/self.out_pixel_scale)),
+                    # no aliasing
+                    self.wavelength*numpy.max(numpy.concatenate([
+                        self.layer_altitudes,self.dm_altitudes,[0]]))/self.out_pixel_scale**2,
+                    
+                    ])
+                /2)*2)
+            ###################################################################
+            
+            
+            
+            # the next even number of pixels that contains
+            # pupil, ( fov + 2*diffraction_per_side )scaled to max height
+            # and the largest angular-spectrum in OTF = wvl*z/delta**2
+            
+            self.nx_prop_pixels = 2**int(numpy.ceil(numpy.log(self.nx_prop_pixels)/numpy.log(2)))
+            
+            self.low_buf = (self.nx_prop_pixels - self.nx_out_pixels)//2
+            self.high_buf = (self.nx_prop_pixels + self.nx_out_pixels)//2
+            
+            # use self.pad to pad physical input into mathematically equivalent input
+            self.pad = (self.nx_prop_pixels - self.nx_in_pixels)//2
+            
+            test_result = test_propagation_parameters(self.wavelength,
+                                                           self.layer_altitudes,self.dm_altitudes,
+                                                           self.nx_prop_pixels,self.nx_in_pixels,self.nx_out_pixels*self.pupil_size/self.sim_size,
+                                                           self.out_pixel_scale,self.max_diffraction_angle)
+            
+            if (test_result == False):
+                print('Propagation Parameter need adjustment for : {}'.format(self.config.type))
+            
+            # x = numpy.arange(self.nx_prop_pixels) - self.nx_prop_pixels/2. + 0.5
+            # yy, xx = numpy.meshgrid(x,x)
+            # self.math_tt_correction = numpy.exp(1j*-numpy.pi/self.nx_prop_pixels*(xx+yy))
+            
+            
+        else:
+            # if not physical, all the new parameters should equal to the only old parameters   
+            self.nx_prop_pixels = self.nx_out_pixels
+            self.partialmade_Q2 = None
+            self.forward_FFT = None
+            self.backward_FFT = None
+            self.low_buf = None
+            self.high_buf = None
+        
+
+
+
+    def calculate_altitude_coords(self, layer_altitude):
+        """
+        Calculate the co-ordinates of vertices of fo the meta-pupil at altitude given a guide star
+        direction and source altitude
+
+        Paramters:
+            layer_altitude (float): Altitude of phase layer
+        """
+        direction_radians = ASEC2RAD * numpy.array(self.position)
+
+        centre = (direction_radians * layer_altitude)
+
+        # If propagating up must account for launch position
+        if self.propagation_direction == "up":
+            if self.source_altitude == 0:
+                centre += self.launch_position
+            else:
+                centre += self.launch_position * (1 - layer_altitude/self.source_altitude)
+                
+        if self.config.propagationMode == 'Physical':
+            if self.source_altitude != 0: # if it is a point source, then we have expanding meta-pupil in cone shape to telescope
+                meta_pupil_size = (self.nx_in_pixels*self.out_pixel_scale * (1 - layer_altitude / self.source_altitude))
+                # print('currently not supporting this')
+            else:
+                meta_pupil_size = self.nx_in_pixels*self.out_pixel_scale # meta_pupil_size cover all required c=4 diffraction
+        else:
+            if self.source_altitude != 0:
+                meta_pupil_size = self.output_phase_diameter * (1 - layer_altitude / self.source_altitude)
+            else:
+                meta_pupil_size = self.output_phase_diameter
+
+        # (phys_centre +- phys_radius) / input_scale ==> index position with 0 = edge
+        # x1,x2,y1,y2 ==> cover the meta_pupil_size with given number of pixel (nx_in)
+        x1 = ((centre[0] - meta_pupil_size / 2.) / self.in_pixel_scale) + self.nx_scrn_size / 2.
+        x2 = ((centre[0] + meta_pupil_size / 2.) / self.in_pixel_scale) + self.nx_scrn_size / 2.
+        y1 = ((centre[1] - meta_pupil_size / 2.) / self.in_pixel_scale) + self.nx_scrn_size / 2.
+        y2 = ((centre[1] + meta_pupil_size / 2.) / self.in_pixel_scale) + self.nx_scrn_size / 2.
+
+        logger.debug("Layer Altitude: {}".format(layer_altitude))
+        logger.debug("Coords: x1: {}, x2: {}, y1: {},  y2: {}".format(x1, x2, y1, y2))
+
+        return x1, x2, y1, y2
+
+    def allocDataArrays(self):
+        """
+        Allocate the data arrays the LOS will require
+
+        Determines and allocates the various arrays the LOS will require to
+        avoid having to re-alloc memory during the running of the LOS and
+        keep it fast. This includes arrays for phase
+        and the E-Field across the LOS
+        """
+        # self.count_allocateDataTime += 1
+        # print(1,datetime.datetime.now())
+        # print('this is super slow process')
+        # print('we allocate too many memeory')
+        self.phase = numpy.zeros([self.nx_out_pixels] * 2, dtype=DTYPE)
+        self.EField = numpy.ones([self.nx_out_pixels] * 2, dtype=CDTYPE)
+        self.residual = numpy.zeros([self.nx_out_pixels] * 2, dtype=DTYPE)
+
+        
+        self.residual_EField = numpy.copy(self.EField)
+        
+        if self.config.propagationMode == 'Physical':
+            N = self.nx_prop_pixels #Assumes Uin is square.
+            k = 2*numpy.pi/self.wavelength     #optical wavevector
+            
+            df1 = 1. / (N*self.in_pixel_scale)
+            fX,fY = numpy.meshgrid(df1*numpy.arange(-N/2,N/2),
+                                   df1*numpy.arange(-N/2,N/2))
+            fsq = fX**2 + fY**2
+            
+            self.partialmade_Q2 = numpy.fft.ifftshift(numpy.exp(-1j * numpy.pi**2 * 2 /k*fsq))
+            
+            self.input_forward_FFT = pyfftw.empty_aligned(
+                    (self.nx_prop_pixels, self.nx_prop_pixels), dtype=CDTYPE)
+            self.output_forward_FFT = pyfftw.empty_aligned(
+                    (self.nx_prop_pixels, self.nx_prop_pixels), dtype=CDTYPE)
+            self.forward_FFT = pyfftw.FFTW(
+                    self.input_forward_FFT, self.output_forward_FFT, axes=(-2, -1),
+                    threads=self.config.fftwThreads, flags=(self.config.fftwFlag, "FFTW_DESTROY_INPUT"),
+                    direction='FFTW_FORWARD'
+                    )
+            
+            self.input_backward_FFT = pyfftw.empty_aligned(
+                    (self.nx_prop_pixels, self.nx_prop_pixels), dtype=CDTYPE)
+            self.output_backward_FFT = pyfftw.empty_aligned(
+                    (self.nx_prop_pixels, self.nx_prop_pixels), dtype=CDTYPE)
+            self.backward_FFT = pyfftw.FFTW(
+                    self.input_backward_FFT, self.output_backward_FFT, axes=(-2, -1),
+                    threads=self.config.fftwThreads, flags=(self.config.fftwFlag, "FFTW_DESTROY_INPUT"),
+                    direction='FFTW_BACKWARD'
+                    )
+            self.EField_buf = numpy.ones([self.nx_prop_pixels] * 2, dtype=CDTYPE)
+            self.correction_EField = numpy.copy(self.EField)
+            self.phase_screens_buf = numpy.zeros((self.n_layers, self.nx_prop_pixels, self.nx_prop_pixels))
+            self.correction_screens_buf = numpy.zeros((self.n_dm, self.nx_prop_pixels, self.nx_prop_pixels))
+            self.phase_correction_buf = numpy.zeros((self.nx_prop_pixels, self.nx_prop_pixels))
+        # print('I am {:}. it is my {:} visit'.format(self.config.type,self.count_allocateDataTime))
+        temp2 = int(numpy.floor(self.nx_out_pixels*self.pupil_size/self.sim_size))
+        temp1 = temp2//2
+            
+        self.plot_mask = aotools.circle(temp1,temp2)
+            
+        if self.mask is not None:
+            self.outMask = interp.zoom_rbs (
+                    self.mask, self.nx_out_pixels, order=1)#.round()
+        else:
+            self.outMask = interp.zoom(
+                    self.mask, self.nx_out_pixels)#.round()
+        
+        if self.config.propagationMode == 'Physical':
+            self.prop_mask = numpy.zeros((self.nx_prop_pixels,self.nx_prop_pixels))
+            # self.nprop2nout use to crop out propagation size to science size # prop ==> out
+            self.nprop2nout = (self.nx_prop_pixels - self.nx_out_pixels)//2
+            # print(self.nx_prop_pixels , self.nx_out_pixels,self.nprop2nout,self.outMask.shape)
+            if self.nprop2nout == 0:
+                self.prop_mask = self.outMask
+            else:
+                if self.nprop2nout > 0:
+                    self.prop_mask[self.nprop2nout:-self.nprop2nout,self.nprop2nout:-self.nprop2nout] = self.outMask
+        else:
+            self.prop_mask = None
+        self.output_phase_diameter = self.nx_out_pixels * self.out_pixel_scale
+        
+
+        # Calculate coords of phase at each altitude
+        self.layer_metapupil_coords = numpy.zeros((self.n_layers, 2, self.nx_in_pixels))
+        for i in range(self.n_layers):
+            x1, x2, y1, y2 = self.calculate_altitude_coords(self.layer_altitudes[i])
+            self.layer_metapupil_coords[i, 0] = numpy.linspace(x1, x2-1, self.nx_in_pixels)
+            self.layer_metapupil_coords[i, 1] = numpy.linspace(y1, y2-1, self.nx_in_pixels)
+
+        # ensure coordinates aren't out of bounds for interpolation
+        self.layer_metapupil_coords = self.layer_metapupil_coords.clip(0, self.nx_scrn_size - 1.000000001)
+
+        # Calculate coords of phase at each DM altitude
+        self.dm_metapupil_coords = numpy.zeros((self.n_dm, 2, self.nx_in_pixels))
+        for i in range(self.n_dm):
+            x1, x2, y1, y2 = self.calculate_altitude_coords(self.dm_altitudes[i])
+            self.dm_metapupil_coords[i, 0] = numpy.linspace(x1, x2-1, self.nx_in_pixels)
+            self.dm_metapupil_coords[i, 1] = numpy.linspace(y1, y2-1, self.nx_in_pixels)
+        self.dm_metapupil_coords = self.dm_metapupil_coords.clip(0, self.nx_scrn_size - 1.000000001)
+
+        self.radii = None
+        
+        # Relavent phase  centred on the line of sight direction
+        self.phase_screens = numpy.zeros((self.n_layers, self.nx_in_pixels, self.nx_in_pixels))
+        # Buffer for corection across fulll FOV
+        self.correction_screens = numpy.zeros((self.n_dm, self.nx_in_pixels, self.nx_in_pixels))
+        # Relavent correction centred on the line of sight direction
+        self.phase_correction = numpy.zeros((self.nx_in_pixels, self.nx_in_pixels))
+        # print(2,datetime.datetime.now())
+
+######################################################
+
+    def zeroData(self, **kwargs):
+        """
+        Sets the phase and complex amp data to zero
+        """
+        try:
+            self.EField[:] = 1
+            self.phase[:] = 0
+            self.phase_screens[:] = 0
+            self.correction_screens[:] = 0
+        except:
+            self.allocDataArrays()
+
+        
+        
+        if self.config.propagationMode == 'Physical':
+            self.EField_buf[:] = 1
+            self.phase_screens_buf[:] = 0
+            self.correction_screens_buf[:] = 0
+            self.correction_EField[:] = 1
+        
+    def makePhase(self, radii=None, apos=None):
+        """
+        Generates the required phase or EField. Uses difference approach
+        depending on whether propagation is geometric or physical
+        (makePhaseGeometric or makePhasePhys respectively)
+
+        Parameters:
+            radii (dict, optional): Radii of each meta pupil of each screen
+            height in pixels. If not given uses pupil radius.
+            apos (ndarray, optional):  The angular position of the GS in
+            radians. If not set, will use the config position
+        """
+
+        # Check if geometric or physical
+        if self.config.propagationMode == "Physical":
+            return self.makePhasePhys(radii)
+        else:
+            return self.makePhaseGeometric(radii)
+
+
+    def makePhaseGeometric(self, radii=None, apos=None):
+        '''
+        Creates the total phase along line of sight offset by a given angle
+        using a geometric ray tracing approach
+
+        Parameters:
+            radii (dict, optional): Radii of each meta pupil of each screen
+            height in pixels. If not given uses pupil radius.
+            apos (ndarray, optional):  The angular position of the GS in
+            radians. If not set, will use the config position
+        '''
+
+        for i in range(self.scrns.shape[0]):
+            numbalib.bilinear_interp(
+                self.scrns[i], self.layer_metapupil_coords[i, 0], self.layer_metapupil_coords[i, 1],
+                self.phase_screens[i], bounds_check=False)
+            
+        self.atmos_phase = self.phase_screens.sum(0)
+
+        # Convert phase to radians
+        self.atmos_phase *= self.phs2Rad
+
+        # Change sign if propagating up
+        # if self.propagation_direction == 'up':
+        #     self.atmos_phase *= -1
+
+        self.phase[:] += self.atmos_phase
+        self.EField[:] *= numpy.exp(1j*self.atmos_phase)
+        
+        if self.outMask is not None:
+            self.EField[:] = np.copy(self.EField[:] * self.outMask)
+
+        return self.EField
+
+
+    def makePhasePhys(self, radii=None, apos=None):
+        '''
+        Finds total line of sight complex amplitude by propagating light
+        through phase screens
+
+        Parameters:
+            radii (dict, optional): Radii of each meta pupil of each screen
+            height in pixels. If not given uses pupil radius.
+            apos (ndarray, optional):  The angular position of the GS in
+            radians. If not set, will use the config position
+        '''
+
+        
+        for i in range(self.scrns.shape[0]):
+            numbalib.bilinear_interp(
+                self.scrns[i], self.layer_metapupil_coords[i, 0], self.layer_metapupil_coords[i, 1],
+                self.phase_screens[i], bounds_check=False)
+            self.phase_screens_buf[i] = numpy.pad(self.phase_screens[i],
+                                                  (self.pad,self.pad),
+                                                  # mode='constant',constant_values=0)
+                                                  mode='symmetric')
+        
+            
+        self.EField_buf[:] = physical_atmosphere_propagation(
+            self.phase_screens_buf, None, self.layer_altitudes, self.source_altitude,
+            self.wavelength, self.out_pixel_scale,
+            propagation_direction=self.propagation_direction,
+            input_efield=self.EField_buf, max_angle=None,
+            Q2=self.partialmade_Q2,FWFFT=self.forward_FFT,BWFFT=self.backward_FFT)
+        
+        if self.prop_mask is not None:
+            self.EField_buf[:] = np.copy(self.EField_buf[:] * self.prop_mask)
+        # print('currently have no pupil funciton!!!!')
+        
+        # self.phase[:] = my_unwrap(numpy.angle(self.EField[:]))
+        self.phase[:] = (numpy.angle(self.EField[:]))
+        # self.phase[:] = np.unwrap(np.unwrap(numpy.angle(self.EField[:]),axis=0),axis=1)
+        
+        self.EField = self.EField_buf[self.low_buf:self.high_buf,
+                                      self.low_buf:self.high_buf]
+        
+        self.phase = numpy.angle(self.EField)
+
+        return self.EField#,self.EField_buf 
+
+
+
+    def performCorrection(self, correction,loopIter=None,iMatFramePlot=False):
+        """
+        Corrects the aberrated line of sight with some given correction phase
+        
+        Parameters:
+            correction (list or ndarray): either 2-d array describing correction, or list of correction arrays
+        """
+        
+        if self.config.propagationMode == 'Physical':
+            self.performCorrectionPhysical(correction,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
+        else:
+            self.performCorrectionGeometric(correction)
+        
+    def performCorrectionGeometric(self, correction):
+        
+        for i in range(correction.shape[0]):
+            numbalib.bilinear_interp(
+                correction[i], self.dm_metapupil_coords[i, 0], self.dm_metapupil_coords[i, 1],
+                self.correction_screens[i], bounds_check=False)
+        
+        self.correction_screens.sum(0, out=self.phase_correction)
+
+        self.phase_correction *= self.phs2Rad
+        # Correct EField
+        self.EField *= numpy.exp(-1j * self.phase_correction)
+
+        if self.outMask is not None:
+            self.EField *= self.outMask
+            mean_phase = np.sum(self.EField*self.outMask)/np.sum(self.outMask)
+        else:
+            mean_phase = np.mean(self.EField)
+        mean_phase /= np.abs(mean_phase)
+        # mean_phase = 1
+        
+        self.EField /= mean_phase
+
+        # Also correct phase in case its required
+        self.residual = (self.phase - self.phase_correction) / self.phs2Rad
+        self.residual -= self.residual.mean()
+
+        self.phase = self.residual * self.phs2Rad
+        
+        
+    
+            
+    def performCorrectionPhysical(self, correction,loopIter=None,iMatFramePlot=False):
+        # either up or down, still need to start from pupil, ... right?
+        # anyway for 'down' definitely need to pick up from the pupil
+        for i in range(correction.shape[0]):
+            temp_correction = numpy.copy(correction[i])
+            temp_correction[0] = 0
+            temp_correction[-1] = 0
+            temp_correction[:,0] = 0
+            temp_correction[:,-1] = 0
+            
+            numbalib.bilinear_interp(
+                correction[i], self.dm_metapupil_coords[i, 0], self.dm_metapupil_coords[i, 1],
+                self.correction_screens[i], bounds_check=False)
+            self.correction_screens_buf[i] = numpy.pad(self.correction_screens[i],
+                                                       (self.pad,self.pad),
+                                                       # mode='constant',constant_values=0)
+                                                       mode='constant',constant_values=(0,0))
+
+        
+            
+        physical_correction_propagation(
+            self.correction_screens_buf, self.prop_mask, self.dm_altitudes,
+            self.wavelength, self.out_pixel_scale,
+            input_efield=self.EField_buf, max_angle=None,
+            Q2=self.partialmade_Q2,FWFFT=self.forward_FFT,BWFFT=self.backward_FFT)
+
+        self.EField = numpy.copy(self.EField_buf[self.low_buf:self.high_buf,
+                                      self.low_buf:self.high_buf])
+        if self.outMask is not None:
+            self.EField *= self.outMask
+            
+        
+        self.residual_EField = numpy.copy(self.EField)
+        self.residual_EField_buf = numpy.copy(self.EField_buf)
+        
+        self.residual = (np.angle(self.EField)) / self.phs2Rad
+        self.phase = self.residual * self.phs2Rad
+        
+
+        
+        
+
+    def frame(self, scrns=None, correction=None,loopIter=None,iMatFramePlot=False):
+        '''
+        Runs one frame through a line of sight
+
+        Finds the phase or complex amplitude through line of sight for a
+        single simulation frame, with a given set of phase screens and
+        some optional correction. 
+        If scrns is ``None``, then light is propagated with no phase.
+
+        Parameters:
+            scrns (list): A list or dict containing the phase screens
+            correction (ndarray, optional): The correction term to take from
+            the phase screens before the WFS is run.
+            read (bool, optional): Should the WFS be read out? if False, then
+            WFS image is calculated but slopes not calculated. defaults to True.
+
+        Returns:
+            ndarray: WFS Measurements
+        '''
+
+        self.zeroData()
+        
+        if correction is None:
+            correction = numpy.zeros(
+                (self.n_dm, self.nx_scrn_size,self.nx_scrn_size))
+
+        # If we propagate up, must do correction first!
+
+        if (self.propagation_direction == "up"):
+            self.performCorrection(correction,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
+
+
+        # Now do propagation through atmospheric turbulence
+        if (scrns is not None):
+            if ((numpy.asarray(scrns).flatten()**2).sum() != 0):
+                if scrns.ndim==2:
+                    scrns.shape = 1, scrns.shape[0], scrns.shape[1]
+                self.scrns = scrns
+                self.makePhase(self.radii)
+            else:
+                self.scrns = numpy.zeros(
+                    (self.n_layers, self.nx_scrn_size, self.nx_scrn_size))
+                self.EField_buf = numpy.ones([self.nx_prop_pixels] * 2, dtype=CDTYPE)
+                if self.prop_mask is not None:
+                    self.EField_buf[:] = np.copy(self.EField_buf[:] * self.prop_mask)
+                self.phase[:] = 0
+                self.EField = self.EField_buf[self.low_buf:self.high_buf,
+                                            self.low_buf:self.high_buf]
+        else: # If no scrns, just assume no turbulence
+            self.scrns = numpy.zeros(
+                    (self.n_layers, self.nx_scrn_size, self.nx_scrn_size))
+
+            self.EField_buf = numpy.ones([self.nx_prop_pixels] * 2, dtype=CDTYPE)
+            if self.prop_mask is not None:
+                self.EField_buf[:] = np.copy(self.EField_buf[:] * self.prop_mask)
+            self.phase[:] = 0
+            self.EField = self.EField_buf[self.low_buf:self.high_buf,
+                                          self.low_buf:self.high_buf]
+        
+        self.uncorrectedPhase = self.phase.copy()/self.phs2Rad
+        self.residual = self.phase
+        # If propagating down, do correction last
+        if (self.propagation_direction == "down"):
+            if (self.config.type == 'ShackHartmann'):
+                if self.config.lgs:
+                    if self.config.lgs.elongationDepth != 0:
+                        return self.residual
+
+        self.performCorrection(correction,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
+        
+        return self.residual
+
+#################################################################################
+
+
+def physical_atmosphere_propagation(
+            phase_screens, output_mask, layer_altitudes, source_altitude,
+            wavelength, output_pixel_scale,
+            propagation_direction="up", input_efield=None, max_angle=None,
+            Q2=None,FWFFT=None,BWFFT=None):
+
+    '''
+    Finds total line of sight complex amplitude by propagating light through phase screens
+
+    If the source altitude is infinity (denoted as 0), then the result of the propagation is
+    the
+
+    Parameters:
+        
+    '''
+
+    scrnNo = len(phase_screens)
+    z_total = 0
+    scrnRange = range(0, scrnNo)
+
+    nx_output_pixels = phase_screens[0].shape[0]
+
+    phs2Rad = 2 * numpy.pi / (wavelength * 10 ** 9)
+
+    EFieldBuf = input_efield
+    if input_efield is None:
+        EFieldBuf = numpy.exp(
+                1j*numpy.zeros((nx_output_pixels,) * 2)).astype(CDTYPE)
+    
+    # Get initial up/down dependent params
+    if propagation_direction == "up":
+        ht = 0
+        ht_final = source_altitude
+        # if ht_final==0:
+        #     raise ValueError("Can't propagate up to infinity")
+        scrnAlts = layer_altitudes
+        # If propagating up from telescope, apply mask to the EField
+        EFieldBuf *= output_mask
+        logger.debug("Create EField Buf of mask")
+
+    else:
+        ht = layer_altitudes[scrnNo-1]
+        ht_final = 0
+        scrnAlts = layer_altitudes[::-1]
+        phase_screens = phase_screens[::-1]
+        logger.debug("Create EField Buf of zero phase")
+
+    # Propagate to first phase screen (if not already there)
+    if ht!=scrnAlts[0]:
+        logger.debug("propagate to first phase screen")
+        z = abs(scrnAlts[0] - ht)
+        z_total += z
+
+        
+        EFieldBuf[:] = fixedScale_angularSpectrum_FFTW(EFieldBuf,z,Q2,FWFFT,BWFFT)
+
+
+    # Go through and propagate between phase screens
+    for i in scrnRange:
+
+        phase = phase_screens[i]
+        # print("Got phase")
+
+        # Convert phase to radians
+        phase *= phs2Rad
+
+        # Apply phase to EField
+        EFieldBuf *= numpy.exp(1j*phase)
+
+        # Change sign if propagating up
+        # if propagation_direction == 'up':
+        #     phase *= -1
+        # print("Get distance")
+        # Get propagation distance for this layer
+        if i==(scrnNo-1):
+            if ht_final == 0 and propagation_direction == "up":
+                # if the final height is infinity, don't propagate any more!
+                continue
+            else:
+                z = abs(ht_final - ht) - z_total
+        else:
+            z = abs(scrnAlts[i+1] - scrnAlts[i])
+
+        # Update total distance counter
+        z_total += z
+
+
+        # Do ASP for last layer to next
+        EFieldBuf[:] = fixedScale_angularSpectrum_FFTW(EFieldBuf,z,Q2,FWFFT,BWFFT)
+        
+    if(ht_final == 0) and (output_mask is not None):
+        EFieldBuf *= output_mask
+
+    return EFieldBuf
+    
+def physical_correction_propagation(
+        correction, output_mask, dm_altitudes,
+        wavelength, output_pixel_scale, propagation_direction="up", input_efield=None, max_angle=None,
+        Q2=None,FWFFT=None,BWFFT=None,plot=False):
+    
+    scrnNo = len(correction)
+    scrnRange = range(0, scrnNo)
+
+    nx_output_pixels = correction[0].shape[0]
+
+    phs2Rad = 2 * numpy.pi / (wavelength * 10 ** 9)
+
+    EFieldBuf = input_efield
+    if input_efield is None:
+        EFieldBuf = numpy.exp(
+                1j*numpy.zeros((nx_output_pixels,) * 2)).astype(CDTYPE)
+    # Get initial up/down dependent params
+    if propagation_direction == "up":
+        ht = 0
+        ht_final = 0
+        scrnAlts = dm_altitudes[::-1]
+        phase_screens = correction[::-1]
+        # If propagating up from telescope, apply mask to the EField
+        EFieldBuf *= output_mask
+        logger.debug("Create EField Buf of zero phase")
+    else:
+
+        ht = 0
+        ht_final = 0
+        scrnAlts = dm_altitudes
+        if output_mask is not None:
+            EFieldBuf *= output_mask
+            # EFieldBuf *= input_efield #???
+        logger.debug("Create EField Buf of mask")
+    
+        
+
+    # Propagate to first phase screen (if not already there)
+    if ht != scrnAlts[0]:
+        logger.debug("propagate to first phase screen")
+        z = ht - scrnAlts[0]
+
+        EFieldBuf[:] = fixedScale_angularSpectrum_FFTW(EFieldBuf,z,Q2,FWFFT,BWFFT)
+
+    # Go through and propagate between phase screens
+    for i in scrnRange:
+        phase = phase_screens[i]
+
+
+        # Convert phase to radians
+        phase *= phs2Rad
+
+        # Apply phase to EField
+        EFieldBuf *= numpy.exp(-1j*phase)
+        
+
+        if i==(scrnNo-1):
+            z = scrnAlts[-1] - ht_final
+        else:
+            z = -(scrnAlts[i+1] - scrnAlts[i])
+
+        # Do ASP for last layer to next
+        EFieldBuf[:] = fixedScale_angularSpectrum_FFTW(EFieldBuf,z,Q2,FWFFT,BWFFT)
+    
+        
+    if output_mask is not None:
+        EFieldBuf *= output_mask
+    
+    return EFieldBuf
+    
+# this could be optimized more by not fft to spatial space until the end of layer.
+def fixedScale_angularSpectrum_FFTW(Uin,z,Q2,FWFFT,BWFFT):
+    if z == 0 :
+        return Uin
+    
+    #Compute propagated field
+    
+    Uout = BWFFT( ((Q2)**z) * FWFFT(Uin) )
+    return Uout
+
+
+# proper propagation without limiting angular-spectrum
+def test_propagation_parameters(wvl,
+                                turbHs,DMHs,
+                                N,n_in,n_out,
+                                scale,angle):
+    n_conditions = 6
+    heights = numpy.unique(numpy.abs(numpy.concatenate((turbHs,DMHs,[0]))))
+    MAXZ = heights.max() - heights.min()
+    conditions = numpy.zeros((n_conditions), dtype=bool)
+    MAXANGLE = wvl/2./scale
+    if angle is None:
+        angle = MAXANGLE
+    
+    # enough coverage of input for output
+    INPUTSIZE = n_in*scale
+    SPREAD = 2.*angle*MAXZ
+    OUTPUTSIZE = n_out*scale
+    conditions[0] = ((INPUTSIZE >= OUTPUTSIZE + SPREAD)
+                     or numpy.isclose(INPUTSIZE, OUTPUTSIZE + SPREAD, rtol=1e-2))
+    if conditions[0] == False:
+        print('Currently having {}px of input, and need total {}px output,'.format(
+            INPUTSIZE/scale,OUTPUTSIZE/scale+SPREAD/scale)
+              + '\nwhere {}px for accurate output and {}px of atmos diffraction,'.format(
+                  OUTPUTSIZE/scale,SPREAD/scale))
+    
+    # enough screen size to accommodate all data
+    SCREENSIZE = N*scale
+    conditions[1] = (
+        ((SCREENSIZE >= INPUTSIZE) or numpy.isclose(SCREENSIZE,INPUTSIZE,rtol=1e-2))
+        and
+        ((SCREENSIZE >= OUTPUTSIZE) or numpy.isclose(SCREENSIZE,OUTPUTSIZE,rtol=1e-2))
+        )
+    if conditions[1] == False:
+        print('Currently having {}m of screen, while it needs {}m input, and {}m output.'.format(
+            SCREENSIZE,INPUTSIZE,OUTPUTSIZE))
+    
+    # no wrapping on output
+    # the size of 'input' now is the prop size
+    DATASPACE = (N/2. + n_out/2.)*scale
+    WRAPPING = MAXANGLE*MAXZ
+    AVAILABLESPACES = N*scale
+    USE = DATASPACE + WRAPPING
+    conditions[2] = ((AVAILABLESPACES >= USE)
+                     or numpy.isclose(AVAILABLESPACES,USE,rtol=1e-2))
+    if conditions[2] == False:
+        print('Currently there is a wrapping effect in the desired accurate region of the output'
+              +'\nThere is {}px avaliable spaces, while it needs {}px'.format(
+                  AVAILABLESPACES/scale,USE/scale))
+    
+    # conditions[3] = True
+    # no false edge reaching pupil (inward direction while previous condition is outward)
+    # the size of 'input' now is the prop size
+    BUFFER = (N - n_out)/2*scale
+    WRAPPING = MAXANGLE*MAXZ
+    conditions[3] = ((BUFFER >= WRAPPING) or numpy.isclose(BUFFER,WRAPPING,rtol=1e-2))
+    if conditions[3] == False:
+        print('There is an inward wrapping. Need more input.')
+        print('suggest input of {}px. currently have {}px'.format(n_out + 2*MAXANGLE*MAXZ/scale,n_in))
+    
+    # enough coverage in angular-spectrum
+    conditions[4] = ((MAXANGLE >= angle) or numpy.isclose(MAXANGLE,angle,rtol=1e-2))
+    if conditions[4] == False:
+        print('Cannot simulate the physically max angular spectrum'
+              + '\nSimulation Max is {}arcsec, while {}arcsec is needed'.format(
+                  MAXANGLE*206265,angle*206265))
+    
+    # # no aliasing in optical transfer function
+    REQUIREPIXEL = wvl*MAXZ/scale**2
+    cond5a = ((N >= REQUIREPIXEL) or numpy.isclose(N,REQUIREPIXEL,rtol=1e-2))
+    cond5b = ((N >= 2*n_in) or numpy.isclose(N,2*n_in,rtol=1e-2))
+    conditions[5] = (cond5a or cond5b)
+    if conditions[5] == False:
+        print('There is aliasing in optical transfer function'
+              + '\nRequire simulating {} pixels, currently at {} pixels'.format(
+                  REQUIREPIXEL,N))
+    
+    condition = conditions.all()
+    
+    return condition
+
+class ElongLineOfSight(object):
+    """
+    List of LineOfSight objects for elongated sources
+    """
+
+    def __init__(self, elongHeights, elongPos, config, *args, **kwargs):
+
+        self.elongHeights = elongHeights
+        self.elongPos = elongPos
+        self.config = config
+
+        self.los_list = []
+        for i in range(len(self.elongHeights)):
+            conf_tmp = copy.copy(config)
+            conf_tmp.GSPosition = self.elongPos[i]
+            conf_tmp.GSHeight = self.elongHeights[i]
+            conf_tmp.calcParams()
+
+            los = LineOfSight(conf_tmp, *args, **kwargs)
+            self.los_list.append(los)
+
+    def __getitem__(self, index):
+        return self.los_list[index]
+
+    def frame(self, scrns=None, correction=None,loopIter=None,iMatFramePlot=None):
+        
+        for i,los in enumerate(self.los_list):
+            los.frame(scrns, correction,loopIter=loopIter,iMatFramePlot=iMatFramePlot)
+
+    def zeroData(self):
+
+        for los in self.los_list:
+            los.zeroData()
+
+    @property
+    def scrns(self):
+        return self.los_list[0].scrns
